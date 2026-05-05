@@ -1,0 +1,76 @@
+------------------------------------------------------------
+raw config objects
+------------------------------------------------------------
+package core
+  version: 3
+  size: 120
+  depends: <none>
+  features: <none>
+package util
+  version: 2
+  size: 40
+  depends: core
+  features: <none>
+package net
+  version: 5
+  size: 70
+  depends: core util
+  features: <none>
+package app
+  version: 7
+  size: 200
+  depends: util net
+  features: gui cli
+task smoke
+  uses: app
+  cost: 15
+  requires: <none>
+task package
+  uses: app
+  cost: 25
+  requires: smoke
+task integration
+  uses: net
+  cost: 30
+  requires: smoke
+------------------------------------------------------------
+package build order:
+  1. core
+  2. util
+  3. net
+  4. app
+------------------------------------------------------------
+package reports (by transitive size desc):
+  app        version=7 direct=200 transitive=710 deps=2 features=2
+  net        version=5 direct=70 transitive=350 deps=2 features=0
+  util       version=2 direct=40 transitive=160 deps=1 features=0
+  core       version=3 direct=120 transitive=120 deps=0 features=0
+------------------------------------------------------------
+task reports (by cost desc):
+  integration uses=net        cost=30 prereqs=1 pkg-transitive=350
+  package    uses=app        cost=25 prereqs=1 pkg-transitive=710
+  smoke      uses=app        cost=15 prereqs=0 pkg-transitive=710
+------------------------------------------------------------
+summary:
+  package count: 4
+  task count: 3
+  total package direct size: 430
+  total task cost: 70
+  heaviest package: app (710)
+------------------------------------------------------------
+query 'app': found package
+package app
+  version: 7
+  size: 200
+  depends: util net
+  features: gui cli
+------------------------------------------------------------
+query 'package': found task
+task package
+  uses: app
+  cost: 25
+  requires: smoke
+------------------------------------------------------------
+query 'missing': not found
+------------------------------------------------------------
+
