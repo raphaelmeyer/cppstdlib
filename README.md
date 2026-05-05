@@ -31,3 +31,9 @@ cmake --build --preset release
 # or
 ./build/release/app
 ```
+
+## Test
+
+```sh
+ctest --preset debug --output-on-failure
+```

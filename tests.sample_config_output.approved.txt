@@ -1,0 +1,36 @@
+------------------------------------------------------------
+raw config objects
+------------------------------------------------------------
+package core
+  version: 1
+  size: 10
+  depends: <none>
+  features: <none>
+task build
+  uses: core
+  cost: 5
+  requires: <none>
+------------------------------------------------------------
+package build order:
+  1. core
+------------------------------------------------------------
+package reports (by transitive size desc):
+  core       version=1 direct=10 transitive=10 deps=0 features=0
+------------------------------------------------------------
+task reports (by cost desc):
+  build      uses=core       cost=5 prereqs=0 pkg-transitive=10
+------------------------------------------------------------
+summary:
+  package count: 1
+  task count: 1
+  total package direct size: 10
+  total task cost: 5
+  heaviest package: core (10)
+------------------------------------------------------------
+query 'app': not found
+------------------------------------------------------------
+query 'package': not found
+------------------------------------------------------------
+query 'missing': not found
+------------------------------------------------------------
+

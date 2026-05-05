@@ -833,7 +833,8 @@ static QueryResult query_entity_by_name(const Config &cfg, const char *name) {
 }
 
 static void print_line(FILE *out) {
-  std::fprintf(out, "------------------------------------------------------------\n");
+  std::fprintf(
+      out, "------------------------------------------------------------\n");
 }
 
 static void print_package(FILE *out, const Package &p) {
@@ -891,10 +892,10 @@ static void print_package_reports(FILE *out,
   std::fprintf(out, "package reports (by transitive size desc):\n");
   for (int i = 0; i < reports.size; ++i) {
     const PackageReport &r = reports[i];
-    std::fprintf(out,
-                 "  %-10s version=%d direct=%d transitive=%d deps=%d features=%d\n",
-                 r.name.text, r.version, r.direct_size, r.transitive_size,
-                 r.dependency_count, r.feature_count);
+    std::fprintf(
+        out, "  %-10s version=%d direct=%d transitive=%d deps=%d features=%d\n",
+        r.name.text, r.version, r.direct_size, r.transitive_size,
+        r.dependency_count, r.feature_count);
   }
 }
 
