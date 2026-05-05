@@ -1,3 +1,5 @@
 #pragma once
 
-int run(const char *config);
+#include <cstdio>
+
+int run(const char *config, FILE *out);

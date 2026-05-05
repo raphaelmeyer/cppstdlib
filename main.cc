@@ -39,4 +39,4 @@ static const char *sample_config_text() {
          "requires smoke\n";
 }
 
-int main() { return run(sample_config_text()); }
+int main() { return run(sample_config_text(), stdout); }
