@@ -945,50 +945,11 @@ static void print_query(const Config &cfg, const char *name) {
   }
 }
 
-static const char *sample_config_text() {
-  return "# sample package/task configuration\n"
-         "\n"
-         "package core\n"
-         "version 3\n"
-         "size 120\n"
-         "\n"
-         "package util\n"
-         "version 2\n"
-         "size 40\n"
-         "depends core\n"
-         "\n"
-         "package net\n"
-         "version 5\n"
-         "size 70\n"
-         "depends core util\n"
-         "\n"
-         "package app\n"
-         "version 7\n"
-         "size 200\n"
-         "depends util net\n"
-         "feature gui\n"
-         "feature cli\n"
-         "\n"
-         "task smoke\n"
-         "uses app\n"
-         "cost 15\n"
-         "\n"
-         "task package\n"
-         "uses app\n"
-         "cost 25\n"
-         "requires smoke\n"
-         "\n"
-         "task integration\n"
-         "uses net\n"
-         "cost 30\n"
-         "requires smoke\n";
-}
-
-int run() {
+int run(const char *config) {
   Config cfg;
   Error err;
 
-  if (parse_config(sample_config_text(), cfg, &err) != Result::OK) {
+  if (parse_config(config, cfg, &err) != Result::OK) {
     std::printf("parse error at line %d: %s\n", err.line, err.message);
     return 1;
   }

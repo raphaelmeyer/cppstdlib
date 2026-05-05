@@ -1,3 +1,3 @@
 #pragma once
 
-int run();
+int run(const char *config);
