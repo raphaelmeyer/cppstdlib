@@ -3,6 +3,7 @@
 #include <expected>
 #include <print>
 #include <string>
+#include <string_view>
 #include <vector>
 
 static const int MAX_NAME = 64;
@@ -78,8 +79,6 @@ struct Error {
 template <typename T> using Result = std::expected<T, Error>;
 using Name = std::string;
 
-static Name make_name(const char *s) { return {s}; }
-
 struct Package {
   Name name;
   int version;
@@ -104,9 +103,9 @@ struct Config {
   Buffer<Task> tasks;
 };
 
-static Package make_empty_package(const char *name) {
+static Package make_empty_package(std::string_view name) {
   Package p;
-  p.name = make_name(name);
+  p.name = name;
   p.version = 0;
   p.size = 0;
   p.has_version = false;
@@ -114,17 +113,17 @@ static Package make_empty_package(const char *name) {
   return p;
 }
 
-static Task make_empty_task(const char *name) {
+static Task make_empty_task(std::string_view name) {
   Task t;
-  t.name = make_name(name);
-  t.uses_package = make_name("");
+  t.name = name;
+  t.uses_package = "";
   t.cost = 0;
   t.has_uses = false;
   t.has_cost = false;
   return t;
 }
 
-static int find_package_index(const Config &cfg, const Name &n) {
+static int find_package_index(const Config &cfg, std::string_view n) {
   for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
     if (cfg.packages[i].name == n) {
       return i;
@@ -133,7 +132,7 @@ static int find_package_index(const Config &cfg, const Name &n) {
   return -1;
 }
 
-static int find_task_index(const Config &cfg, const Name &n) {
+static int find_task_index(const Config &cfg, std::string_view n) {
   for (std::size_t i = 0; i < cfg.tasks.size(); ++i) {
     if (cfg.tasks[i].name == n) {
       return i;
@@ -163,7 +162,7 @@ static bool split_words(const char *line, Buffer<Name> &out_words) {
       ++i;
     }
     word[w] = '\0';
-    out_words.push_back(make_name(word));
+    out_words.push_back(word);
   }
   return true;
 }
@@ -257,7 +256,7 @@ static Result<Config> parse_config(const char *text) {
       if (find_package_index(config, words[1]) >= 0) {
         return std::unexpected{Error{lr.line_no, "duplicate package"}};
       }
-      config.packages.push_back(make_empty_package(words[1].c_str()));
+      config.packages.push_back(make_empty_package(words[1]));
       current_package = config.packages.size() - 1;
       current_task = -1;
       state = STATE_PACKAGE;
@@ -272,7 +271,7 @@ static Result<Config> parse_config(const char *text) {
       if (find_task_index(config, words[1]) >= 0) {
         return std::unexpected{Error{lr.line_no, "duplicate task"}};
       }
-      Task t = make_empty_task(words[1].c_str());
+      Task t = make_empty_task(words[1]);
       config.tasks.push_back(t);
       current_task = config.tasks.size() - 1;
       current_package = -1;
@@ -684,20 +683,20 @@ struct QueryResult {
   int index;
 };
 
-static QueryResult query_entity_by_name(const Config &cfg, const char *name) {
+static QueryResult query_entity_by_name(const Config &cfg,
+                                        std::string_view name) {
   QueryResult q;
   q.kind = QUERY_NONE;
   q.index = -1;
 
-  Name n = make_name(name);
-  int p = find_package_index(cfg, n);
+  int p = find_package_index(cfg, name);
   if (p >= 0) {
     q.kind = QUERY_PACKAGE;
     q.index = p;
     return q;
   }
 
-  int t = find_task_index(cfg, n);
+  int t = find_task_index(cfg, name);
   if (t >= 0) {
     q.kind = QUERY_TASK;
     q.index = t;
@@ -803,7 +802,7 @@ static void print_summary(FILE *out, const Config &cfg,
   }
 }
 
-static void print_query(FILE *out, const Config &cfg, const char *name) {
+static void print_query(FILE *out, const Config &cfg, std::string_view name) {
   QueryResult q = query_entity_by_name(cfg, name);
   if (q.kind == QUERY_NONE) {
     std::println(out, "query '{}': not found", name);
