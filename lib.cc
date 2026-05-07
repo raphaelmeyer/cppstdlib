@@ -1,6 +1,9 @@
 #include "lib.h"
 
+#include <cstddef>
 #include <cstdio>
+
+#include <vector>
 
 static const int MAX_NAME = 64;
 static const int MAX_LINE = 256;
@@ -79,71 +82,7 @@ static bool parse_int(const char *s, int &out) {
   return true;
 }
 
-template <typename T> struct Buffer {
-  T *data;
-  int size;
-  int capacity;
-
-  Buffer() : data(0), size(0), capacity(0) {}
-
-  ~Buffer() { delete[] data; }
-
-  Buffer(const Buffer &) = delete;
-  Buffer &operator=(const Buffer &) = delete;
-
-  void reserve(int new_cap) {
-    if (new_cap <= capacity)
-      return;
-    T *n = new T[new_cap];
-    for (int i = 0; i < size; ++i) {
-      n[i] = rvalue_reference(data[i]);
-    }
-    delete[] data;
-    data = n;
-    capacity = new_cap;
-  }
-
-  Buffer(Buffer &&other)
-      : data(other.data), size(other.size), capacity(other.capacity) {
-    other.data = 0;
-    other.size = 0;
-    other.capacity = 0;
-  }
-
-  Buffer &operator=(Buffer &&other) {
-    if (this != &other) {
-      delete[] data;
-      data = other.data;
-      size = other.size;
-      capacity = other.capacity;
-      other.data = 0;
-      other.size = 0;
-      other.capacity = 0;
-    }
-    return *this;
-  }
-
-  void add(const T &v) {
-    if (size == capacity) {
-      int nc = capacity == 0 ? 4 : capacity * 2;
-      reserve(nc);
-    }
-    data[size++] = v;
-  }
-
-  void add(T &&v) {
-    if (size == capacity) {
-      int nc = capacity == 0 ? 4 : capacity * 2;
-      reserve(nc);
-    }
-    data[size++] = rvalue_reference(v);
-  }
-
-  T &operator[](int i) { return data[i]; }
-  const T &operator[](int i) const { return data[i]; }
-
-  void clear() { size = 0; }
-};
+template <typename T> using Buffer = std::vector<T>;
 
 struct Error {
   char message[256];
@@ -218,7 +157,7 @@ static Task make_empty_task(const char *name) {
 }
 
 static int find_package_index(const Config &cfg, const Name &n) {
-  for (int i = 0; i < cfg.packages.size; ++i) {
+  for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
     if (name_eq(cfg.packages[i].name, n))
       return i;
   }
@@ -226,7 +165,7 @@ static int find_package_index(const Config &cfg, const Name &n) {
 }
 
 static int find_task_index(const Config &cfg, const Name &n) {
-  for (int i = 0; i < cfg.tasks.size; ++i) {
+  for (std::size_t i = 0; i < cfg.tasks.size(); ++i) {
     if (name_eq(cfg.tasks[i].name, n))
       return i;
   }
@@ -254,7 +193,7 @@ static bool split_words(const char *line, Buffer<Name> &out_words) {
       ++i;
     }
     word[w] = '\0';
-    out_words.add(make_name(word));
+    out_words.push_back(make_name(word));
   }
   return true;
 }
@@ -336,11 +275,11 @@ static Result parse_config(const char *text, Config &out_cfg,
 
     Buffer<Name> words;
     split_words(line, words);
-    if (words.size == 0)
+    if (words.empty())
       continue;
 
     if (cstr_eq(words[0].text, "package")) {
-      if (words.size != 2) {
+      if (words.size() != 2) {
         *out_error =
             make_error(lr.line_no, "package requires exactly one name");
         return Result::Error;
@@ -349,15 +288,15 @@ static Result parse_config(const char *text, Config &out_cfg,
         *out_error = make_error(lr.line_no, "duplicate package");
         return Result::Error;
       }
-      out_cfg.packages.add(make_empty_package(words[1].text));
-      current_package = out_cfg.packages.size - 1;
+      out_cfg.packages.push_back(make_empty_package(words[1].text));
+      current_package = out_cfg.packages.size() - 1;
       current_task = -1;
       state = STATE_PACKAGE;
       continue;
     }
 
     if (cstr_eq(words[0].text, "task")) {
-      if (words.size != 2) {
+      if (words.size() != 2) {
         *out_error = make_error(lr.line_no, "task requires exactly one name");
         return Result::Error;
       }
@@ -366,8 +305,8 @@ static Result parse_config(const char *text, Config &out_cfg,
         return Result::Error;
       }
       Task t = make_empty_task(words[1].text);
-      out_cfg.tasks.add(rvalue_reference(t));
-      current_task = out_cfg.tasks.size - 1;
+      out_cfg.tasks.push_back(rvalue_reference(t));
+      current_task = out_cfg.tasks.size() - 1;
       current_package = -1;
       state = STATE_TASK;
       continue;
@@ -377,7 +316,7 @@ static Result parse_config(const char *text, Config &out_cfg,
       Package &p = out_cfg.packages[current_package];
 
       if (cstr_eq(words[0].text, "version")) {
-        if (words.size != 2) {
+        if (words.size() != 2) {
           *out_error = make_error(lr.line_no, "version requires one integer");
           return Result::Error;
         }
@@ -392,7 +331,7 @@ static Result parse_config(const char *text, Config &out_cfg,
       }
 
       if (cstr_eq(words[0].text, "size")) {
-        if (words.size != 2) {
+        if (words.size() != 2) {
           *out_error = make_error(lr.line_no, "size requires one integer");
           return Result::Error;
         }
@@ -407,23 +346,23 @@ static Result parse_config(const char *text, Config &out_cfg,
       }
 
       if (cstr_eq(words[0].text, "depends")) {
-        if (words.size < 2) {
+        if (words.size() < 2) {
           *out_error = make_error(lr.line_no,
                                   "depends requires at least one package name");
           return Result::Error;
         }
-        for (int i = 1; i < words.size; ++i) {
-          p.depends.add(words[i]);
+        for (std::size_t i = 1; i < words.size(); ++i) {
+          p.depends.push_back(words[i]);
         }
         continue;
       }
 
       if (cstr_eq(words[0].text, "feature")) {
-        if (words.size != 2) {
+        if (words.size() != 2) {
           *out_error = make_error(lr.line_no, "feature requires one name");
           return Result::Error;
         }
-        p.features.add(words[1]);
+        p.features.push_back(words[1]);
         continue;
       }
 
@@ -435,7 +374,7 @@ static Result parse_config(const char *text, Config &out_cfg,
       Task &t = out_cfg.tasks[current_task];
 
       if (cstr_eq(words[0].text, "uses")) {
-        if (words.size != 2) {
+        if (words.size() != 2) {
           *out_error = make_error(lr.line_no, "uses requires one package name");
           return Result::Error;
         }
@@ -445,7 +384,7 @@ static Result parse_config(const char *text, Config &out_cfg,
       }
 
       if (cstr_eq(words[0].text, "cost")) {
-        if (words.size != 2) {
+        if (words.size() != 2) {
           *out_error = make_error(lr.line_no, "cost requires one integer");
           return Result::Error;
         }
@@ -460,13 +399,13 @@ static Result parse_config(const char *text, Config &out_cfg,
       }
 
       if (cstr_eq(words[0].text, "requires")) {
-        if (words.size < 2) {
+        if (words.size() < 2) {
           *out_error =
               make_error(lr.line_no, "requires needs at least one task name");
           return Result::Error;
         }
-        for (int i = 1; i < words.size; ++i) {
-          t.requires_tasks.add(words[i]);
+        for (std::size_t i = 1; i < words.size(); ++i) {
+          t.requires_tasks.push_back(words[i]);
         }
         continue;
       }
@@ -484,7 +423,7 @@ static Result parse_config(const char *text, Config &out_cfg,
 }
 
 static Result validate_config(const Config &cfg, Error *out_error) {
-  for (int i = 0; i < cfg.packages.size; ++i) {
+  for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
     const Package &p = cfg.packages[i];
     if (!p.has_version) {
       *out_error = make_error(0, "package missing version");
@@ -495,7 +434,7 @@ static Result validate_config(const Config &cfg, Error *out_error) {
       return Result::Error;
     }
 
-    for (int d = 0; d < p.depends.size; ++d) {
+    for (std::size_t d = 0; d < p.depends.size(); ++d) {
       if (find_package_index(cfg, p.depends[d]) < 0) {
         *out_error =
             make_error(0, "package dependency refers to unknown package");
@@ -504,7 +443,7 @@ static Result validate_config(const Config &cfg, Error *out_error) {
     }
   }
 
-  for (int i = 0; i < cfg.tasks.size; ++i) {
+  for (std::size_t i = 0; i < cfg.tasks.size(); ++i) {
     const Task &t = cfg.tasks[i];
     if (!t.has_uses) {
       *out_error = make_error(0, "task missing uses");
@@ -518,7 +457,7 @@ static Result validate_config(const Config &cfg, Error *out_error) {
       *out_error = make_error(0, "task uses unknown package");
       return Result::Error;
     }
-    for (int r = 0; r < t.requires_tasks.size; ++r) {
+    for (std::size_t r = 0; r < t.requires_tasks.size(); ++r) {
       if (find_task_index(cfg, t.requires_tasks[r]) < 0) {
         *out_error = make_error(0, "task requires unknown task");
         return Result::Error;
@@ -534,7 +473,7 @@ static Result detect_package_cycle_dfs(const Config &cfg, int index,
   color[index] = 1;
   const Package &p = cfg.packages[index];
 
-  for (int i = 0; i < p.depends.size; ++i) {
+  for (std::size_t i = 0; i < p.depends.size(); ++i) {
     int dep = find_package_index(cfg, p.depends[i]);
     if (dep < 0)
       continue;
@@ -558,7 +497,7 @@ static Result detect_task_cycle_dfs(const Config &cfg, int index,
   color[index] = 1;
   const Task &t = cfg.tasks[index];
 
-  for (int i = 0; i < t.requires_tasks.size; ++i) {
+  for (std::size_t i = 0; i < t.requires_tasks.size(); ++i) {
     int dep = find_task_index(cfg, t.requires_tasks[i]);
     if (dep < 0)
       continue;
@@ -579,11 +518,11 @@ static Result detect_task_cycle_dfs(const Config &cfg, int index,
 
 static Result detect_cycles(const Config &cfg, Error *out_error) {
   Buffer<int> pcolor;
-  pcolor.reserve(cfg.packages.size);
-  for (int i = 0; i < cfg.packages.size; ++i)
-    pcolor.add(0);
+  pcolor.reserve(cfg.packages.size());
+  for (std::size_t i = 0; i < cfg.packages.size(); ++i)
+    pcolor.push_back(0);
 
-  for (int i = 0; i < cfg.packages.size; ++i) {
+  for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
     if (pcolor[i] == 0) {
       Result r = detect_package_cycle_dfs(cfg, i, pcolor, out_error);
       if (r != Result::OK)
@@ -592,11 +531,11 @@ static Result detect_cycles(const Config &cfg, Error *out_error) {
   }
 
   Buffer<int> tcolor;
-  tcolor.reserve(cfg.tasks.size);
-  for (int i = 0; i < cfg.tasks.size; ++i)
-    tcolor.add(0);
+  tcolor.reserve(cfg.tasks.size());
+  for (std::size_t i = 0; i < cfg.tasks.size(); ++i)
+    tcolor.push_back(0);
 
-  for (int i = 0; i < cfg.tasks.size; ++i) {
+  for (std::size_t i = 0; i < cfg.tasks.size(); ++i) {
     if (tcolor[i] == 0) {
       Result r = detect_task_cycle_dfs(cfg, i, tcolor, out_error);
       if (r != Result::OK)
@@ -611,23 +550,23 @@ static void topo_packages_dfs(const Config &cfg, int index,
                               Buffer<int> &visited, Buffer<int> &out_order) {
   visited[index] = 1;
   const Package &p = cfg.packages[index];
-  for (int i = 0; i < p.depends.size; ++i) {
+  for (std::size_t i = 0; i < p.depends.size(); ++i) {
     int dep = find_package_index(cfg, p.depends[i]);
     if (dep >= 0 && !visited[dep]) {
       topo_packages_dfs(cfg, dep, visited, out_order);
     }
   }
-  out_order.add(index);
+  out_order.push_back(index);
 }
 
 static Buffer<int> package_build_order(const Config &cfg) {
   Buffer<int> visited;
-  visited.reserve(cfg.packages.size);
-  for (int i = 0; i < cfg.packages.size; ++i)
-    visited.add(0);
+  visited.reserve(cfg.packages.size());
+  for (std::size_t i = 0; i < cfg.packages.size(); ++i)
+    visited.push_back(0);
 
   Buffer<int> order;
-  for (int i = 0; i < cfg.packages.size; ++i) {
+  for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
     if (!visited[i]) {
       topo_packages_dfs(cfg, i, visited, order);
     }
@@ -644,7 +583,7 @@ static int compute_transitive_size_dfs(const Config &cfg, int index,
 
   busy[index] = 1;
   int total = cfg.packages[index].size;
-  for (int i = 0; i < cfg.packages[index].depends.size; ++i) {
+  for (std::size_t i = 0; i < cfg.packages[index].depends.size(); ++i) {
     int dep = find_package_index(cfg, cfg.packages[index].depends[i]);
     if (dep >= 0) {
       total += compute_transitive_size_dfs(cfg, dep, memo, busy);
@@ -666,25 +605,25 @@ struct PackageReport {
 
 static Buffer<PackageReport> make_package_reports(const Config &cfg) {
   Buffer<int> memo;
-  memo.reserve(cfg.packages.size);
-  for (int i = 0; i < cfg.packages.size; ++i)
-    memo.add(-1);
+  memo.reserve(cfg.packages.size());
+  for (std::size_t i = 0; i < cfg.packages.size(); ++i)
+    memo.push_back(-1);
 
   Buffer<int> busy;
-  busy.reserve(cfg.packages.size);
-  for (int i = 0; i < cfg.packages.size; ++i)
-    busy.add(0);
+  busy.reserve(cfg.packages.size());
+  for (std::size_t i = 0; i < cfg.packages.size(); ++i)
+    busy.push_back(0);
 
   Buffer<PackageReport> reports;
-  for (int i = 0; i < cfg.packages.size; ++i) {
+  for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
     PackageReport r;
     r.name = cfg.packages[i].name;
     r.version = cfg.packages[i].version;
     r.direct_size = cfg.packages[i].size;
     r.transitive_size = compute_transitive_size_dfs(cfg, i, memo, busy);
-    r.dependency_count = cfg.packages[i].depends.size;
-    r.feature_count = cfg.packages[i].features.size;
-    reports.add(rvalue_reference(r));
+    r.dependency_count = cfg.packages[i].depends.size();
+    r.feature_count = cfg.packages[i].features.size();
+    reports.push_back(rvalue_reference(r));
   }
 
   return reports;
@@ -700,38 +639,38 @@ struct TaskReport {
 
 static int transitive_size_for_package(const Config &cfg, int pkg_index) {
   Buffer<int> memo;
-  memo.reserve(cfg.packages.size);
-  for (int i = 0; i < cfg.packages.size; ++i)
-    memo.add(-1);
-
+  memo.reserve(cfg.packages.size());
+  for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
+    memo.push_back(-1);
+  }
   Buffer<int> busy;
-  busy.reserve(cfg.packages.size);
-  for (int i = 0; i < cfg.packages.size; ++i)
-    busy.add(0);
-
+  busy.reserve(cfg.packages.size());
+  for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
+    busy.push_back(0);
+  }
   return compute_transitive_size_dfs(cfg, pkg_index, memo, busy);
 }
 
 static Buffer<TaskReport> make_task_reports(const Config &cfg) {
   Buffer<TaskReport> reports;
-  for (int i = 0; i < cfg.tasks.size; ++i) {
+  for (std::size_t i = 0; i < cfg.tasks.size(); ++i) {
     TaskReport r;
     r.name = cfg.tasks[i].name;
     r.package_name = cfg.tasks[i].uses_package;
     r.cost = cfg.tasks[i].cost;
-    r.prerequisite_count = cfg.tasks[i].requires_tasks.size;
+    r.prerequisite_count = cfg.tasks[i].requires_tasks.size();
     int p = find_package_index(cfg, cfg.tasks[i].uses_package);
     r.package_transitive_size =
         p >= 0 ? transitive_size_for_package(cfg, p) : 0;
-    reports.add(rvalue_reference(r));
+    reports.push_back(rvalue_reference(r));
   }
   return reports;
 }
 
 static void
 sort_package_reports_by_transitive_size(Buffer<PackageReport> &reports) {
-  for (int i = 0; i < reports.size; ++i) {
-    for (int j = i + 1; j < reports.size; ++j) {
+  for (std::size_t i = 0; i < reports.size(); ++i) {
+    for (std::size_t j = i + 1; j < reports.size(); ++j) {
       if (reports[j].transitive_size > reports[i].transitive_size) {
         PackageReport tmp = reports[i];
         reports[i] = reports[j];
@@ -742,8 +681,8 @@ sort_package_reports_by_transitive_size(Buffer<PackageReport> &reports) {
 }
 
 static void sort_task_reports_by_cost(Buffer<TaskReport> &reports) {
-  for (int i = 0; i < reports.size; ++i) {
-    for (int j = i + 1; j < reports.size; ++j) {
+  for (std::size_t i = 0; i < reports.size(); ++i) {
+    for (std::size_t j = i + 1; j < reports.size(); ++j) {
       if (reports[j].cost > reports[i].cost) {
         TaskReport tmp = reports[i];
         reports[i] = reports[j];
@@ -754,8 +693,8 @@ static void sort_task_reports_by_cost(Buffer<TaskReport> &reports) {
 }
 
 static int total_package_direct_size(const Config &cfg) {
-  int total = 0;
-  for (int i = 0; i < cfg.packages.size; ++i) {
+  std::size_t total = 0;
+  for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
     total += cfg.packages[i].size;
   }
   return total;
@@ -763,18 +702,18 @@ static int total_package_direct_size(const Config &cfg) {
 
 static int total_task_cost(const Config &cfg) {
   int total = 0;
-  for (int i = 0; i < cfg.tasks.size; ++i) {
+  for (std::size_t i = 0; i < cfg.tasks.size(); ++i) {
     total += cfg.tasks[i].cost;
   }
   return total;
 }
 
 static int find_heaviest_package_index(const Buffer<PackageReport> &reports) {
-  if (reports.size == 0)
+  if (reports.empty())
     return -1;
 
   int best = 0;
-  for (int i = 1; i < reports.size; ++i) {
+  for (std::size_t i = 1; i < reports.size(); ++i) {
     if (reports[i].transitive_size > reports[best].transitive_size) {
       best = i;
     }
@@ -824,20 +763,20 @@ static void print_package(FILE *out, const Package &p) {
   std::fprintf(out, "  size: %d\n", p.size);
 
   std::fprintf(out, "  depends:");
-  if (p.depends.size == 0) {
+  if (p.depends.empty()) {
     std::fprintf(out, " <none>");
   } else {
-    for (int i = 0; i < p.depends.size; ++i) {
+    for (std::size_t i = 0; i < p.depends.size(); ++i) {
       std::fprintf(out, " %s", p.depends[i].text);
     }
   }
   std::fprintf(out, "\n");
 
   std::fprintf(out, "  features:");
-  if (p.features.size == 0) {
+  if (p.features.empty()) {
     std::fprintf(out, " <none>");
   } else {
-    for (int i = 0; i < p.features.size; ++i) {
+    for (std::size_t i = 0; i < p.features.size(); ++i) {
       std::fprintf(out, " %s", p.features[i].text);
     }
   }
@@ -850,10 +789,10 @@ static void print_task(FILE *out, const Task &t) {
   std::fprintf(out, "  cost: %d\n", t.cost);
 
   std::fprintf(out, "  requires:");
-  if (t.requires_tasks.size == 0) {
+  if (t.requires_tasks.empty()) {
     std::fprintf(out, " <none>");
   } else {
-    for (int i = 0; i < t.requires_tasks.size; ++i) {
+    for (std::size_t i = 0; i < t.requires_tasks.size(); ++i) {
       std::fprintf(out, " %s", t.requires_tasks[i].text);
     }
   }
@@ -863,15 +802,15 @@ static void print_task(FILE *out, const Task &t) {
 static void print_build_order(FILE *out, const Config &cfg,
                               const Buffer<int> &order) {
   std::fprintf(out, "package build order:\n");
-  for (int i = 0; i < order.size; ++i) {
-    std::fprintf(out, "  %d. %s\n", i + 1, cfg.packages[order[i]].name.text);
+  for (std::size_t i = 0; i < order.size(); ++i) {
+    std::fprintf(out, "  %lu. %s\n", i + 1, cfg.packages[order[i]].name.text);
   }
 }
 
 static void print_package_reports(FILE *out,
                                   const Buffer<PackageReport> &reports) {
   std::fprintf(out, "package reports (by transitive size desc):\n");
-  for (int i = 0; i < reports.size; ++i) {
+  for (std::size_t i = 0; i < reports.size(); ++i) {
     const PackageReport &r = reports[i];
     std::fprintf(
         out, "  %-10s version=%d direct=%d transitive=%d deps=%d features=%d\n",
@@ -882,7 +821,7 @@ static void print_package_reports(FILE *out,
 
 static void print_task_reports(FILE *out, const Buffer<TaskReport> &reports) {
   std::fprintf(out, "task reports (by cost desc):\n");
-  for (int i = 0; i < reports.size; ++i) {
+  for (std::size_t i = 0; i < reports.size(); ++i) {
     const TaskReport &r = reports[i];
     std::fprintf(out,
                  "  %-10s uses=%-10s cost=%d prereqs=%d pkg-transitive=%d\n",
@@ -894,8 +833,8 @@ static void print_task_reports(FILE *out, const Buffer<TaskReport> &reports) {
 static void print_summary(FILE *out, const Config &cfg,
                           const Buffer<PackageReport> &package_reports) {
   std::fprintf(out, "summary:\n");
-  std::fprintf(out, "  package count: %d\n", cfg.packages.size);
-  std::fprintf(out, "  task count: %d\n", cfg.tasks.size);
+  std::fprintf(out, "  package count: %lu\n", cfg.packages.size());
+  std::fprintf(out, "  task count: %lu\n", cfg.tasks.size());
   std::fprintf(out, "  total package direct size: %d\n",
                total_package_direct_size(cfg));
   std::fprintf(out, "  total task cost: %d\n", total_task_cost(cfg));
@@ -953,10 +892,10 @@ int run(const char *config, FILE *out) {
   std::fprintf(out, "raw config objects\n");
   print_line(out);
 
-  for (int i = 0; i < cfg.packages.size; ++i) {
+  for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
     print_package(out, cfg.packages[i]);
   }
-  for (int i = 0; i < cfg.tasks.size; ++i) {
+  for (std::size_t i = 0; i < cfg.tasks.size(); ++i) {
     print_task(out, cfg.tasks[i]);
   }
 
