@@ -1,5 +1,6 @@
 #pragma once
 
 #include <cstdio>
+#include <string_view>
 
-int run(const char *config, FILE *out);
+int run(std::string_view config_text, FILE *out);

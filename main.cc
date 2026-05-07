@@ -1,42 +1,48 @@
 #include "lib.h"
 
-static const char *sample_config_text() {
-  return "# sample package/task configuration\n"
-         "\n"
-         "package core\n"
-         "version 3\n"
-         "size 120\n"
-         "\n"
-         "package util\n"
-         "version 2\n"
-         "size 40\n"
-         "depends core\n"
-         "\n"
-         "package net\n"
-         "version 5\n"
-         "size 70\n"
-         "depends core util\n"
-         "\n"
-         "package app\n"
-         "version 7\n"
-         "size 200\n"
-         "depends util net\n"
-         "feature gui\n"
-         "feature cli\n"
-         "\n"
-         "task smoke\n"
-         "uses app\n"
-         "cost 15\n"
-         "\n"
-         "task package\n"
-         "uses app\n"
-         "cost 25\n"
-         "requires smoke\n"
-         "\n"
-         "task integration\n"
-         "uses net\n"
-         "cost 30\n"
-         "requires smoke\n";
+#include <string>
+
+namespace {
+
+std::string const sample_config_text = R"(
+# sample package/task configuration
+
+package core
+version 3
+size 120
+
+package util
+version 2
+size 40
+depends core
+
+package net
+version 5
+size 70
+depends core util
+
+package app
+version 7
+size 200
+depends util net
+feature gui
+feature cli
+
+task smoke
+uses app
+cost 15
+
+task package
+uses app
+cost 25
+requires smoke
+
+task integration
+uses net
+cost 30
+requires smoke
+)";
+
 }
 
-int main() { return run(sample_config_text(), stdout); }
+int main() { return run(sample_config_text, stdout); }

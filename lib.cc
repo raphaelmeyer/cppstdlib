@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <expected>
 #include <print>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -11,7 +12,7 @@
 namespace {
 
 struct ParsingError {
-  int line;
+  size_t line;
   std::string message;
 };
 
@@ -44,49 +45,44 @@ void print_error(FILE *out, Error const &error) {
              error);
 }
 
+struct Line {
+  size_t number;
+  std::string_view text;
+};
+
+std::string_view trim(std::string_view text) {
+  auto const start = text.find_first_not_of(" \t\r\n");
+  if (start == std::string_view::npos) {
+    return {};
+  }
+
+  auto const end = text.find_last_not_of(" \t\r\n");
+  return text.substr(start, end - start + 1);
+}
+
+auto split_lines(std::string_view text) {
+  return text | std::views::split('\n') | std::views::enumerate |
+         std::views::transform([](auto &&tuple) {
+           auto [index, line] = tuple;
+           return Line{.number = static_cast<size_t>(index) + 1,
+                       .text = trim(std::string_view{line})};
+         }) |
+         std::ranges::to<std::vector>();
+}
+
+auto split_words(std::string_view text) {
+  return text | std::views::split(' ') | std::views::transform([](auto &&word) {
+           return std::string_view{word};
+         }) |
+         std::views::filter([](auto const &word) { return not word.empty(); }) |
+         std::ranges::to<std::vector>();
+}
+
+bool is_comment_or_empty(std::string_view line) {
+  return line.empty() || line.at(0) == '#';
+}
+
 } // namespace
-
-static const int MAX_NAME = 64;
-static const int MAX_LINE = 256;
-
-static int cstr_len(const char *s) {
-  int n = 0;
-  while (s[n] != '\0') {
-    ++n;
-  }
-  return n;
-}
-
-static void cstr_copy(char *dst, const char *src, int cap) {
-  if (cap <= 0)
-    return;
-  int i = 0;
-  while (src[i] != '\0' && i < cap - 1) {
-    dst[i] = src[i];
-    ++i;
-  }
-  dst[i] = '\0';
-}
-
-static bool is_space(char c) {
-  return c == ' ' || c == '\t' || c == '\r' || c == '\n';
-}
-
-static void trim_in_place(char *s) {
-  int n = cstr_len(s);
-  int start = 0;
-  while (start < n && is_space(s[start]))
-    ++start;
-  int end = n;
-  while (end > start && is_space(s[end - 1]))
-    --end;
-
-  int out = 0;
-  for (int i = start; i < end; ++i) {
-    s[out++] = s[i];
-  }
-  s[out] = '\0';
-}
 
 static bool parse_int(const char *s, int &out) {
   int i = 0;
@@ -175,86 +171,8 @@ static int find_task_index(const Config &cfg, std::string_view n) {
   return -1;
 }
 
-static bool split_words(const char *line, Buffer<Name> &out_words) {
-  out_words.clear();
-  char temp[MAX_LINE];
-  cstr_copy(temp, line, MAX_LINE);
-
-  int i = 0;
-  while (temp[i] != '\0') {
-    while (temp[i] != '\0' && is_space(temp[i]))
-      ++i;
-    if (temp[i] == '\0')
-      break;
-
-    char word[MAX_NAME];
-    int w = 0;
-    while (temp[i] != '\0' && !is_space(temp[i])) {
-      if (w < MAX_NAME - 1) {
-        word[w++] = temp[i];
-      }
-      ++i;
-    }
-    word[w] = '\0';
-    out_words.push_back(word);
-  }
-  return true;
-}
-
-struct LineReader {
-  const char *text;
-  int pos;
-  int line;
-};
-
-static void line_reader_init(LineReader &r, const char *text) {
-  r.text = text;
-  r.pos = 0;
-  r.line = 1;
-}
-
-struct ReadLineResult {
-  bool has_line;
-  char line[MAX_LINE];
-  int line_no;
-};
-
-static ReadLineResult line_reader_next(LineReader &r) {
-  ReadLineResult res;
-  res.has_line = false;
-  res.line[0] = '\0';
-  res.line_no = r.line;
-
-  if (r.text[r.pos] == '\0') {
-    return res;
-  }
-
-  int out = 0;
-  while (r.text[r.pos] != '\0' && r.text[r.pos] != '\n') {
-    if (out < MAX_LINE - 1) {
-      res.line[out++] = r.text[r.pos];
-    }
-    ++r.pos;
-  }
-  if (r.text[r.pos] == '\n') {
-    ++r.pos;
-    ++r.line;
-  }
-  res.line[out] = '\0';
-  res.has_line = true;
-  return res;
-}
-
-static bool is_comment_or_empty(const char *line) {
-  char tmp[MAX_LINE];
-  cstr_copy(tmp, line, MAX_LINE);
-  trim_in_place(tmp);
-  return tmp[0] == '\0' || tmp[0] == '#';
-}
-
-static Result<Config> parse_config(const char *text) {
-  LineReader reader;
-  line_reader_init(reader, text);
+static Result<Config> parse_config(std::string_view config_text) {
+  auto const lines = split_lines(config_text);
 
   Config config{};
 
@@ -264,31 +182,23 @@ static Result<Config> parse_config(const char *text) {
   int current_package = -1;
   int current_task = -1;
 
-  while (true) {
-    ReadLineResult lr = line_reader_next(reader);
-    if (!lr.has_line)
-      break;
-
-    char line[MAX_LINE];
-    cstr_copy(line, lr.line, MAX_LINE);
-    trim_in_place(line);
-
-    if (is_comment_or_empty(line)) {
+  for (auto const &line : lines) {
+    if (is_comment_or_empty(line.text)) {
       continue;
     }
 
-    Buffer<Name> words;
-    split_words(line, words);
-    if (words.empty())
+    auto const words = split_words(line.text);
+    if (words.empty()) {
       continue;
+    }
 
     if (words[0] == "package") {
       if (words.size() != 2) {
         return std::unexpected{
-            ParsingError{lr.line_no, "package requires exactly one name"}};
+            ParsingError{line.number, "package requires exactly one name"}};
       }
       if (find_package_index(config, words[1]) >= 0) {
-        return std::unexpected{ParsingError{lr.line_no, "duplicate package"}};
+        return std::unexpected{ParsingError{line.number, "duplicate package"}};
       }
       config.packages.push_back(make_empty_package(words[1]));
       current_package = config.packages.size() - 1;
@@ -300,10 +210,10 @@ static Result<Config> parse_config(const char *text) {
     if (words[0] == "task") {
       if (words.size() != 2) {
         return std::unexpected{
-            ParsingError{lr.line_no, "task requires exactly one name"}};
+            ParsingError{line.number, "task requires exactly one name"}};
       }
       if (find_task_index(config, words[1]) >= 0) {
-        return std::unexpected{ParsingError{lr.line_no, "duplicate task"}};
+        return std::unexpected{ParsingError{line.number, "duplicate task"}};
       }
       Task t = make_empty_task(words[1]);
       config.tasks.push_back(t);
@@ -319,12 +229,12 @@ static Result<Config> parse_config(const char *text) {
       if (words[0] == "version") {
         if (words.size() != 2) {
           return std::unexpected{
-              ParsingError{lr.line_no, "version requires one integer"}};
+              ParsingError{line.number, "version requires one integer"}};
         }
         int v = 0;
-        if (!parse_int(words[1].c_str(), v)) {
+        if (!parse_int(std::string{words[1]}.c_str(), v)) {
           return std::unexpected{
-              ParsingError{lr.line_no, "invalid version integer"}};
+              ParsingError{line.number, "invalid version integer"}};
         }
         p.version = v;
         p.has_version = true;
@@ -334,12 +244,12 @@ static Result<Config> parse_config(const char *text) {
       if (words[0] == "size") {
         if (words.size() != 2) {
           return std::unexpected{
-              ParsingError{lr.line_no, "size requires one integer"}};
+              ParsingError{line.number, "size requires one integer"}};
         }
         int v = 0;
-        if (!parse_int(words[1].c_str(), v)) {
+        if (!parse_int(std::string{words[1]}.c_str(), v)) {
           return std::unexpected{
-              ParsingError{lr.line_no, "invalid size integer"}};
+              ParsingError{line.number, "invalid size integer"}};
         }
         p.size = v;
         p.has_size = true;
@@ -349,10 +259,10 @@ static Result<Config> parse_config(const char *text) {
       if (words[0] == "depends") {
         if (words.size() < 2) {
           return std::unexpected{ParsingError{
-              lr.line_no, "depends requires at least one package name"}};
+              line.number, "depends requires at least one package name"}};
         }
         for (std::size_t i = 1; i < words.size(); ++i) {
-          p.depends.push_back(words[i]);
+          p.depends.emplace_back(words[i]);
         }
         continue;
       }
@@ -360,14 +270,14 @@ static Result<Config> parse_config(const char *text) {
       if (words[0] == "feature") {
         if (words.size() != 2) {
           return std::unexpected{
-              ParsingError{lr.line_no, "feature requires one name"}};
+              ParsingError{line.number, "feature requires one name"}};
         }
-        p.features.push_back(words[1]);
+        p.features.emplace_back(words[1]);
         continue;
       }
 
       return std::unexpected{
-          ParsingError{lr.line_no, "unknown package directive"}};
+          ParsingError{line.number, "unknown package directive"}};
     }
 
     if (state == STATE_TASK) {
@@ -376,7 +286,7 @@ static Result<Config> parse_config(const char *text) {
       if (words[0] == "uses") {
         if (words.size() != 2) {
           return std::unexpected{
-              ParsingError{lr.line_no, "uses requires one package name"}};
+              ParsingError{line.number, "uses requires one package name"}};
         }
         t.uses_package = words[1];
         t.has_uses = true;
@@ -386,12 +296,12 @@ static Result<Config> parse_config(const char *text) {
       if (words[0] == "cost") {
         if (words.size() != 2) {
           return std::unexpected{
-              ParsingError{lr.line_no, "cost requires one integer"}};
+              ParsingError{line.number, "cost requires one integer"}};
         }
         int v = 0;
-        if (!parse_int(words[1].c_str(), v)) {
+        if (!parse_int(std::string{words[1]}.c_str(), v)) {
           return std::unexpected{
-              ParsingError{lr.line_no, "invalid cost integer"}};
+              ParsingError{line.number, "invalid cost integer"}};
         }
         t.cost = v;
         t.has_cost = true;
@@ -401,20 +311,20 @@ static Result<Config> parse_config(const char *text) {
       if (words[0] == "requires") {
         if (words.size() < 2) {
           return std::unexpected{ParsingError{
-              lr.line_no, "requires needs at least one task name"}};
+              line.number, "requires needs at least one task name"}};
         }
         for (std::size_t i = 1; i < words.size(); ++i) {
-          t.requires_tasks.push_back(words[i]);
+          t.requires_tasks.emplace_back(words[i]);
         }
         continue;
       }
 
       return std::unexpected{
-          ParsingError{lr.line_no, "unknown task directive"}};
+          ParsingError{line.number, "unknown task directive"}};
     }
 
-    return std::unexpected{
-        ParsingError{lr.line_no, "directive outside of package or task block"}};
+    return std::unexpected{ParsingError{
+        line.number, "directive outside of package or task block"}};
   }
 
   return config;
@@ -861,9 +771,9 @@ static void print_query(FILE *out, const Config &cfg, std::string_view name) {
   }
 }
 
-int run(const char *input_config, FILE *out) {
+int run(std::string_view config_text, FILE *out) {
   auto const result =
-      parse_config(input_config).and_then([](auto const &config) {
+      parse_config(config_text).and_then([](auto const &config) {
         return validate_config(config)
             .and_then([&config] { return detect_cycles(config); })
             .and_then([&config] -> Result<Config> { return config; });
