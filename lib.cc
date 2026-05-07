@@ -241,9 +241,11 @@ static bool is_comment_or_empty(const char *line) {
   return tmp[0] == '\0' || tmp[0] == '#';
 }
 
-static Result<void> parse_config(const char *text, Config &out_cfg) {
+static Result<Config> parse_config(const char *text) {
   LineReader reader;
   line_reader_init(reader, text);
+
+  Config config{};
 
   enum ParseState { STATE_NONE, STATE_PACKAGE, STATE_TASK };
 
@@ -274,11 +276,11 @@ static Result<void> parse_config(const char *text, Config &out_cfg) {
         return std::unexpected{
             Error{lr.line_no, "package requires exactly one name"}};
       }
-      if (find_package_index(out_cfg, words[1]) >= 0) {
+      if (find_package_index(config, words[1]) >= 0) {
         return std::unexpected{Error{lr.line_no, "duplicate package"}};
       }
-      out_cfg.packages.push_back(make_empty_package(words[1].text));
-      current_package = out_cfg.packages.size() - 1;
+      config.packages.push_back(make_empty_package(words[1].text));
+      current_package = config.packages.size() - 1;
       current_task = -1;
       state = STATE_PACKAGE;
       continue;
@@ -289,19 +291,19 @@ static Result<void> parse_config(const char *text, Config &out_cfg) {
         return std::unexpected{
             Error{lr.line_no, "task requires exactly one name"}};
       }
-      if (find_task_index(out_cfg, words[1]) >= 0) {
+      if (find_task_index(config, words[1]) >= 0) {
         return std::unexpected{Error{lr.line_no, "duplicate task"}};
       }
       Task t = make_empty_task(words[1].text);
-      out_cfg.tasks.push_back(rvalue_reference(t));
-      current_task = out_cfg.tasks.size() - 1;
+      config.tasks.push_back(rvalue_reference(t));
+      current_task = config.tasks.size() - 1;
       current_package = -1;
       state = STATE_TASK;
       continue;
     }
 
     if (state == STATE_PACKAGE) {
-      Package &p = out_cfg.packages[current_package];
+      Package &p = config.packages[current_package];
 
       if (cstr_eq(words[0].text, "version")) {
         if (words.size() != 2) {
@@ -355,7 +357,7 @@ static Result<void> parse_config(const char *text, Config &out_cfg) {
     }
 
     if (state == STATE_TASK) {
-      Task &t = out_cfg.tasks[current_task];
+      Task &t = config.tasks[current_task];
 
       if (cstr_eq(words[0].text, "uses")) {
         if (words.size() != 2) {
@@ -399,7 +401,7 @@ static Result<void> parse_config(const char *text, Config &out_cfg) {
         Error{lr.line_no, "directive outside of package or task block"}};
   }
 
-  return {};
+  return config;
 }
 
 static Result<void> validate_config(const Config &cfg) {
@@ -848,15 +850,15 @@ static void print_query(FILE *out, const Config &cfg, const char *name) {
 }
 
 int run(const char *config, FILE *out) {
-  Config cfg;
-
-  auto const parse_result = parse_config(config, cfg);
+  auto const parse_result = parse_config(config);
   if (not parse_result.has_value()) {
     auto const err = parse_result.error();
     std::fprintf(out, "parse error at line %d: %s\n", err.line,
                  err.message.c_str());
     return 1;
   }
+
+  auto const cfg = parse_result.value();
 
   auto const validate_result = validate_config(cfg);
   if (not validate_result.has_value()) {
