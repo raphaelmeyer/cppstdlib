@@ -7,10 +7,6 @@
 static const int MAX_NAME = 64;
 static const int MAX_LINE = 256;
 
-template <typename T> static T &&rvalue_reference(T &v) {
-  return static_cast<T &&>(v);
-}
-
 static int cstr_len(const char *s) {
   int n = 0;
   while (s[n] != '\0') {
@@ -295,7 +291,7 @@ static Result<Config> parse_config(const char *text) {
         return std::unexpected{Error{lr.line_no, "duplicate task"}};
       }
       Task t = make_empty_task(words[1].text);
-      config.tasks.push_back(rvalue_reference(t));
+      config.tasks.push_back(t);
       current_task = config.tasks.size() - 1;
       current_package = -1;
       state = STATE_TASK;
@@ -600,7 +596,7 @@ static Buffer<PackageReport> make_package_reports(const Config &cfg) {
     r.transitive_size = compute_transitive_size_dfs(cfg, i, memo, busy);
     r.dependency_count = cfg.packages[i].depends.size();
     r.feature_count = cfg.packages[i].features.size();
-    reports.push_back(rvalue_reference(r));
+    reports.push_back(r);
   }
 
   return reports;
@@ -639,7 +635,7 @@ static Buffer<TaskReport> make_task_reports(const Config &cfg) {
     int p = find_package_index(cfg, cfg.tasks[i].uses_package);
     r.package_transitive_size =
         p >= 0 ? transitive_size_for_package(cfg, p) : 0;
-    reports.push_back(rvalue_reference(r));
+    reports.push_back(r);
   }
   return reports;
 }
