@@ -1,0 +1,25 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "extensions": {
+    "recommendations": [
+      "llvm-vs-code-extensions.vscode-clangd",
+      "twxs.cmake"
+    ]
+  },
+  "settings": {
+    "editor.renderWhitespace": "boundary",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "[c][cpp]": {
+      "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+      "editor.inlayHints.enabled": "off"
+    },
+    "[jsonc][json]": {
+      "editor.defaultFormatter": "vscode.json-language-features"
+    }
+  }
+}
