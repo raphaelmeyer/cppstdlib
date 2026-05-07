@@ -1,10 +1,50 @@
 #include "lib.h"
 
+#include <cstdio>
 #include <expected>
 #include <print>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
+
+namespace {
+
+struct ParsingError {
+  int line;
+  std::string message;
+};
+
+struct ValidationError {
+  std::string message;
+};
+
+struct CycleDetectionError {
+  std::string message;
+};
+
+using Error = std::variant<ParsingError, ValidationError, CycleDetectionError>;
+
+template <typename T> using Result = std::expected<T, Error>;
+
+std::string to_string(ParsingError const &error) {
+  return std::format("parse error at line {}: {}", error.line, error.message);
+}
+
+std::string to_string(ValidationError const &error) {
+  return std::format("validation error: {}", error.message);
+}
+
+std::string to_string(CycleDetectionError const &error) {
+  return std::format("cycle error: {}", error.message);
+}
+
+void print_error(FILE *out, Error const &error) {
+  std::visit([&out](auto const &e) { std::println(out, "{}", to_string(e)); },
+             error);
+}
+
+} // namespace
 
 static const int MAX_NAME = 64;
 static const int MAX_LINE = 256;
@@ -71,12 +111,6 @@ static bool parse_int(const char *s, int &out) {
 
 template <typename T> using Buffer = std::vector<T>;
 
-struct Error {
-  int line;
-  std::string message;
-};
-
-template <typename T> using Result = std::expected<T, Error>;
 using Name = std::string;
 
 struct Package {
@@ -251,10 +285,10 @@ static Result<Config> parse_config(const char *text) {
     if (words[0] == "package") {
       if (words.size() != 2) {
         return std::unexpected{
-            Error{lr.line_no, "package requires exactly one name"}};
+            ParsingError{lr.line_no, "package requires exactly one name"}};
       }
       if (find_package_index(config, words[1]) >= 0) {
-        return std::unexpected{Error{lr.line_no, "duplicate package"}};
+        return std::unexpected{ParsingError{lr.line_no, "duplicate package"}};
       }
       config.packages.push_back(make_empty_package(words[1]));
       current_package = config.packages.size() - 1;
@@ -266,10 +300,10 @@ static Result<Config> parse_config(const char *text) {
     if (words[0] == "task") {
       if (words.size() != 2) {
         return std::unexpected{
-            Error{lr.line_no, "task requires exactly one name"}};
+            ParsingError{lr.line_no, "task requires exactly one name"}};
       }
       if (find_task_index(config, words[1]) >= 0) {
-        return std::unexpected{Error{lr.line_no, "duplicate task"}};
+        return std::unexpected{ParsingError{lr.line_no, "duplicate task"}};
       }
       Task t = make_empty_task(words[1]);
       config.tasks.push_back(t);
@@ -285,11 +319,12 @@ static Result<Config> parse_config(const char *text) {
       if (words[0] == "version") {
         if (words.size() != 2) {
           return std::unexpected{
-              Error{lr.line_no, "version requires one integer"}};
+              ParsingError{lr.line_no, "version requires one integer"}};
         }
         int v = 0;
         if (!parse_int(words[1].c_str(), v)) {
-          return std::unexpected{Error{lr.line_no, "invalid version integer"}};
+          return std::unexpected{
+              ParsingError{lr.line_no, "invalid version integer"}};
         }
         p.version = v;
         p.has_version = true;
@@ -299,11 +334,12 @@ static Result<Config> parse_config(const char *text) {
       if (words[0] == "size") {
         if (words.size() != 2) {
           return std::unexpected{
-              Error{lr.line_no, "size requires one integer"}};
+              ParsingError{lr.line_no, "size requires one integer"}};
         }
         int v = 0;
         if (!parse_int(words[1].c_str(), v)) {
-          return std::unexpected{Error{lr.line_no, "invalid size integer"}};
+          return std::unexpected{
+              ParsingError{lr.line_no, "invalid size integer"}};
         }
         p.size = v;
         p.has_size = true;
@@ -312,8 +348,8 @@ static Result<Config> parse_config(const char *text) {
 
       if (words[0] == "depends") {
         if (words.size() < 2) {
-          return std::unexpected{
-              Error{lr.line_no, "depends requires at least one package name"}};
+          return std::unexpected{ParsingError{
+              lr.line_no, "depends requires at least one package name"}};
         }
         for (std::size_t i = 1; i < words.size(); ++i) {
           p.depends.push_back(words[i]);
@@ -324,13 +360,14 @@ static Result<Config> parse_config(const char *text) {
       if (words[0] == "feature") {
         if (words.size() != 2) {
           return std::unexpected{
-              Error{lr.line_no, "feature requires one name"}};
+              ParsingError{lr.line_no, "feature requires one name"}};
         }
         p.features.push_back(words[1]);
         continue;
       }
 
-      return std::unexpected{Error{lr.line_no, "unknown package directive"}};
+      return std::unexpected{
+          ParsingError{lr.line_no, "unknown package directive"}};
     }
 
     if (state == STATE_TASK) {
@@ -339,7 +376,7 @@ static Result<Config> parse_config(const char *text) {
       if (words[0] == "uses") {
         if (words.size() != 2) {
           return std::unexpected{
-              Error{lr.line_no, "uses requires one package name"}};
+              ParsingError{lr.line_no, "uses requires one package name"}};
         }
         t.uses_package = words[1];
         t.has_uses = true;
@@ -349,11 +386,12 @@ static Result<Config> parse_config(const char *text) {
       if (words[0] == "cost") {
         if (words.size() != 2) {
           return std::unexpected{
-              Error{lr.line_no, "cost requires one integer"}};
+              ParsingError{lr.line_no, "cost requires one integer"}};
         }
         int v = 0;
         if (!parse_int(words[1].c_str(), v)) {
-          return std::unexpected{Error{lr.line_no, "invalid cost integer"}};
+          return std::unexpected{
+              ParsingError{lr.line_no, "invalid cost integer"}};
         }
         t.cost = v;
         t.has_cost = true;
@@ -362,8 +400,8 @@ static Result<Config> parse_config(const char *text) {
 
       if (words[0] == "requires") {
         if (words.size() < 2) {
-          return std::unexpected{
-              Error{lr.line_no, "requires needs at least one task name"}};
+          return std::unexpected{ParsingError{
+              lr.line_no, "requires needs at least one task name"}};
         }
         for (std::size_t i = 1; i < words.size(); ++i) {
           t.requires_tasks.push_back(words[i]);
@@ -371,11 +409,12 @@ static Result<Config> parse_config(const char *text) {
         continue;
       }
 
-      return std::unexpected{Error{lr.line_no, "unknown task directive"}};
+      return std::unexpected{
+          ParsingError{lr.line_no, "unknown task directive"}};
     }
 
     return std::unexpected{
-        Error{lr.line_no, "directive outside of package or task block"}};
+        ParsingError{lr.line_no, "directive outside of package or task block"}};
   }
 
   return config;
@@ -385,16 +424,16 @@ static Result<void> validate_config(const Config &cfg) {
   for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
     const Package &p = cfg.packages[i];
     if (!p.has_version) {
-      return std::unexpected{Error{0, "package missing version"}};
+      return std::unexpected{ValidationError{"package missing version"}};
     }
     if (!p.has_size) {
-      return std::unexpected{Error{0, "package missing size"}};
+      return std::unexpected{ValidationError{"package missing size"}};
     }
 
     for (std::size_t d = 0; d < p.depends.size(); ++d) {
       if (find_package_index(cfg, p.depends[d]) < 0) {
         return std::unexpected{
-            Error{0, "package dependency refers to unknown package"}};
+            ValidationError{"package dependency refers to unknown package"}};
       }
     }
   }
@@ -402,17 +441,17 @@ static Result<void> validate_config(const Config &cfg) {
   for (std::size_t i = 0; i < cfg.tasks.size(); ++i) {
     const Task &t = cfg.tasks[i];
     if (!t.has_uses) {
-      return std::unexpected{Error{0, "task missing uses"}};
+      return std::unexpected{ValidationError{"task missing uses"}};
     }
     if (!t.has_cost) {
-      return std::unexpected{Error{0, "task missing cost"}};
+      return std::unexpected{ValidationError{"task missing cost"}};
     }
     if (find_package_index(cfg, t.uses_package) < 0) {
-      return std::unexpected{Error{0, "task uses unknown package"}};
+      return std::unexpected{ValidationError{"task uses unknown package"}};
     }
     for (std::size_t r = 0; r < t.requires_tasks.size(); ++r) {
       if (find_task_index(cfg, t.requires_tasks[r]) < 0) {
-        return std::unexpected{Error{0, "task requires unknown task"}};
+        return std::unexpected{ValidationError{"task requires unknown task"}};
       }
     }
   }
@@ -430,7 +469,7 @@ static Result<void> detect_package_cycle_dfs(const Config &cfg, int index,
     if (dep < 0)
       continue;
     if (color[dep] == 1) {
-      return std::unexpected{Error{0, "package cycle detected"}};
+      return std::unexpected{CycleDetectionError{"package cycle detected"}};
     }
     if (color[dep] == 0) {
       Result r = detect_package_cycle_dfs(cfg, dep, color);
@@ -454,7 +493,7 @@ static Result<void> detect_task_cycle_dfs(const Config &cfg, int index,
     if (dep < 0)
       continue;
     if (color[dep] == 1) {
-      return std::unexpected{Error{0, "task cycle detected"}};
+      return std::unexpected{CycleDetectionError{"task cycle detected"}};
     }
     if (color[dep] == 0) {
       Result r = detect_task_cycle_dfs(cfg, dep, color);
@@ -822,29 +861,20 @@ static void print_query(FILE *out, const Config &cfg, std::string_view name) {
   }
 }
 
-int run(const char *config, FILE *out) {
-  auto const parse_result = parse_config(config);
-  if (not parse_result.has_value()) {
-    auto const err = parse_result.error();
-    std::println(out, "parse error at line {}: {}", err.line, err.message);
+int run(const char *input_config, FILE *out) {
+  auto const result =
+      parse_config(input_config).and_then([](auto const &config) {
+        return validate_config(config)
+            .and_then([&config] { return detect_cycles(config); })
+            .and_then([&config] -> Result<Config> { return config; });
+      });
+
+  if (not result.has_value()) {
+    print_error(out, result.error());
     return 1;
   }
 
-  auto const cfg = parse_result.value();
-
-  auto const validate_result = validate_config(cfg);
-  if (not validate_result.has_value()) {
-    auto const err = validate_result.error();
-    std::println(out, "validation error: {}", err.message);
-    return 1;
-  }
-
-  auto const detect_cycles_result = detect_cycles(cfg);
-  if (not detect_cycles_result.has_value()) {
-    auto const err = detect_cycles_result.error();
-    std::println(out, "cycle error: {}", err.message);
-    return 1;
-  }
+  auto const cfg = result.value();
 
   print_line(out);
   std::println(out, "raw config objects");
