@@ -15,16 +15,6 @@ static int cstr_len(const char *s) {
   return n;
 }
 
-static bool cstr_eq(const char *a, const char *b) {
-  int i = 0;
-  while (a[i] != '\0' && b[i] != '\0') {
-    if (a[i] != b[i])
-      return false;
-    ++i;
-  }
-  return a[i] == '\0' && b[i] == '\0';
-}
-
 static void cstr_copy(char *dst, const char *src, int cap) {
   if (cap <= 0)
     return;
@@ -85,20 +75,9 @@ struct Error {
 };
 
 template <typename T> using Result = std::expected<T, Error>;
+using Name = std::string;
 
-struct Name {
-  char text[MAX_NAME];
-};
-
-static Name make_name(const char *s) {
-  Name n;
-  cstr_copy(n.text, s, MAX_NAME);
-  return n;
-}
-
-static bool name_eq(const Name &a, const Name &b) {
-  return cstr_eq(a.text, b.text);
-}
+static Name make_name(const char *s) { return {s}; }
 
 struct Package {
   Name name;
@@ -146,16 +125,18 @@ static Task make_empty_task(const char *name) {
 
 static int find_package_index(const Config &cfg, const Name &n) {
   for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
-    if (name_eq(cfg.packages[i].name, n))
+    if (cfg.packages[i].name == n) {
       return i;
+    }
   }
   return -1;
 }
 
 static int find_task_index(const Config &cfg, const Name &n) {
   for (std::size_t i = 0; i < cfg.tasks.size(); ++i) {
-    if (name_eq(cfg.tasks[i].name, n))
+    if (cfg.tasks[i].name == n) {
       return i;
+    }
   }
   return -1;
 }
@@ -267,7 +248,7 @@ static Result<Config> parse_config(const char *text) {
     if (words.empty())
       continue;
 
-    if (cstr_eq(words[0].text, "package")) {
+    if (words[0] == "package") {
       if (words.size() != 2) {
         return std::unexpected{
             Error{lr.line_no, "package requires exactly one name"}};
@@ -275,14 +256,14 @@ static Result<Config> parse_config(const char *text) {
       if (find_package_index(config, words[1]) >= 0) {
         return std::unexpected{Error{lr.line_no, "duplicate package"}};
       }
-      config.packages.push_back(make_empty_package(words[1].text));
+      config.packages.push_back(make_empty_package(words[1].c_str()));
       current_package = config.packages.size() - 1;
       current_task = -1;
       state = STATE_PACKAGE;
       continue;
     }
 
-    if (cstr_eq(words[0].text, "task")) {
+    if (words[0] == "task") {
       if (words.size() != 2) {
         return std::unexpected{
             Error{lr.line_no, "task requires exactly one name"}};
@@ -290,7 +271,7 @@ static Result<Config> parse_config(const char *text) {
       if (find_task_index(config, words[1]) >= 0) {
         return std::unexpected{Error{lr.line_no, "duplicate task"}};
       }
-      Task t = make_empty_task(words[1].text);
+      Task t = make_empty_task(words[1].c_str());
       config.tasks.push_back(t);
       current_task = config.tasks.size() - 1;
       current_package = -1;
@@ -301,13 +282,13 @@ static Result<Config> parse_config(const char *text) {
     if (state == STATE_PACKAGE) {
       Package &p = config.packages[current_package];
 
-      if (cstr_eq(words[0].text, "version")) {
+      if (words[0] == "version") {
         if (words.size() != 2) {
           return std::unexpected{
               Error{lr.line_no, "version requires one integer"}};
         }
         int v = 0;
-        if (!parse_int(words[1].text, v)) {
+        if (!parse_int(words[1].c_str(), v)) {
           return std::unexpected{Error{lr.line_no, "invalid version integer"}};
         }
         p.version = v;
@@ -315,13 +296,13 @@ static Result<Config> parse_config(const char *text) {
         continue;
       }
 
-      if (cstr_eq(words[0].text, "size")) {
+      if (words[0] == "size") {
         if (words.size() != 2) {
           return std::unexpected{
               Error{lr.line_no, "size requires one integer"}};
         }
         int v = 0;
-        if (!parse_int(words[1].text, v)) {
+        if (!parse_int(words[1].c_str(), v)) {
           return std::unexpected{Error{lr.line_no, "invalid size integer"}};
         }
         p.size = v;
@@ -329,7 +310,7 @@ static Result<Config> parse_config(const char *text) {
         continue;
       }
 
-      if (cstr_eq(words[0].text, "depends")) {
+      if (words[0] == "depends") {
         if (words.size() < 2) {
           return std::unexpected{
               Error{lr.line_no, "depends requires at least one package name"}};
@@ -340,7 +321,7 @@ static Result<Config> parse_config(const char *text) {
         continue;
       }
 
-      if (cstr_eq(words[0].text, "feature")) {
+      if (words[0] == "feature") {
         if (words.size() != 2) {
           return std::unexpected{
               Error{lr.line_no, "feature requires one name"}};
@@ -355,7 +336,7 @@ static Result<Config> parse_config(const char *text) {
     if (state == STATE_TASK) {
       Task &t = config.tasks[current_task];
 
-      if (cstr_eq(words[0].text, "uses")) {
+      if (words[0] == "uses") {
         if (words.size() != 2) {
           return std::unexpected{
               Error{lr.line_no, "uses requires one package name"}};
@@ -365,13 +346,13 @@ static Result<Config> parse_config(const char *text) {
         continue;
       }
 
-      if (cstr_eq(words[0].text, "cost")) {
+      if (words[0] == "cost") {
         if (words.size() != 2) {
           return std::unexpected{
               Error{lr.line_no, "cost requires one integer"}};
         }
         int v = 0;
-        if (!parse_int(words[1].text, v)) {
+        if (!parse_int(words[1].c_str(), v)) {
           return std::unexpected{Error{lr.line_no, "invalid cost integer"}};
         }
         t.cost = v;
@@ -379,7 +360,7 @@ static Result<Config> parse_config(const char *text) {
         continue;
       }
 
-      if (cstr_eq(words[0].text, "requires")) {
+      if (words[0] == "requires") {
         if (words.size() < 2) {
           return std::unexpected{
               Error{lr.line_no, "requires needs at least one task name"}};
@@ -731,7 +712,7 @@ static void print_line(FILE *out) {
 }
 
 static void print_package(FILE *out, const Package &p) {
-  std::fprintf(out, "package %s\n", p.name.text);
+  std::fprintf(out, "package %s\n", p.name.c_str());
   std::fprintf(out, "  version: %d\n", p.version);
   std::fprintf(out, "  size: %d\n", p.size);
 
@@ -740,7 +721,7 @@ static void print_package(FILE *out, const Package &p) {
     std::fprintf(out, " <none>");
   } else {
     for (std::size_t i = 0; i < p.depends.size(); ++i) {
-      std::fprintf(out, " %s", p.depends[i].text);
+      std::fprintf(out, " %s", p.depends[i].c_str());
     }
   }
   std::fprintf(out, "\n");
@@ -750,15 +731,15 @@ static void print_package(FILE *out, const Package &p) {
     std::fprintf(out, " <none>");
   } else {
     for (std::size_t i = 0; i < p.features.size(); ++i) {
-      std::fprintf(out, " %s", p.features[i].text);
+      std::fprintf(out, " %s", p.features[i].c_str());
     }
   }
   std::fprintf(out, "\n");
 }
 
 static void print_task(FILE *out, const Task &t) {
-  std::fprintf(out, "task %s\n", t.name.text);
-  std::fprintf(out, "  uses: %s\n", t.uses_package.text);
+  std::fprintf(out, "task %s\n", t.name.c_str());
+  std::fprintf(out, "  uses: %s\n", t.uses_package.c_str());
   std::fprintf(out, "  cost: %d\n", t.cost);
 
   std::fprintf(out, "  requires:");
@@ -766,7 +747,7 @@ static void print_task(FILE *out, const Task &t) {
     std::fprintf(out, " <none>");
   } else {
     for (std::size_t i = 0; i < t.requires_tasks.size(); ++i) {
-      std::fprintf(out, " %s", t.requires_tasks[i].text);
+      std::fprintf(out, " %s", t.requires_tasks[i].c_str());
     }
   }
   std::fprintf(out, "\n");
@@ -776,7 +757,8 @@ static void print_build_order(FILE *out, const Config &cfg,
                               const Buffer<int> &order) {
   std::fprintf(out, "package build order:\n");
   for (std::size_t i = 0; i < order.size(); ++i) {
-    std::fprintf(out, "  %lu. %s\n", i + 1, cfg.packages[order[i]].name.text);
+    std::fprintf(out, "  %lu. %s\n", i + 1,
+                 cfg.packages[order[i]].name.c_str());
   }
 }
 
@@ -789,7 +771,7 @@ static void print_package_reports(FILE *out,
     std::fprintf(out,
                  "  %-10s version=%d direct=%d "
                  "transitive=%d deps=%d features=%d\n",
-                 r.name.text, r.version, r.direct_size, r.transitive_size,
+                 r.name.c_str(), r.version, r.direct_size, r.transitive_size,
                  r.dependency_count, r.feature_count);
   }
 }
@@ -801,8 +783,8 @@ static void print_task_reports(FILE *out, const Buffer<TaskReport> &reports) {
     std::fprintf(out,
                  "  %-10s uses=%-10s cost=%d "
                  "prereqs=%d pkg-transitive=%d\n",
-                 r.name.text, r.package_name.text, r.cost, r.prerequisite_count,
-                 r.package_transitive_size);
+                 r.name.c_str(), r.package_name.c_str(), r.cost,
+                 r.prerequisite_count, r.package_transitive_size);
   }
 }
 
@@ -818,7 +800,7 @@ static void print_summary(FILE *out, const Config &cfg,
   int heavy = find_heaviest_package_index(package_reports);
   if (heavy >= 0) {
     const PackageReport &r = package_reports[heavy];
-    std::fprintf(out, "  heaviest package: %s (%d)\n", r.name.text,
+    std::fprintf(out, "  heaviest package: %s (%d)\n", r.name.c_str(),
                  r.transitive_size);
   } else {
     std::fprintf(out, "  heaviest package: <none>\n");
