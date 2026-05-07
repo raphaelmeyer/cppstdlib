@@ -1,6 +1,7 @@
 #include "lib.h"
 
 #include <expected>
+#include <print>
 #include <string>
 #include <vector>
 
@@ -707,121 +708,116 @@ static QueryResult query_entity_by_name(const Config &cfg, const char *name) {
 }
 
 static void print_line(FILE *out) {
-  std::fprintf(
-      out, "------------------------------------------------------------\n");
+  std::println(out,
+               "------------------------------------------------------------");
 }
 
 static void print_package(FILE *out, const Package &p) {
-  std::fprintf(out, "package %s\n", p.name.c_str());
-  std::fprintf(out, "  version: %d\n", p.version);
-  std::fprintf(out, "  size: %d\n", p.size);
+  std::println(out, "package {}", p.name);
+  std::println(out, "  version: {}", p.version);
+  std::println(out, "  size: {}", p.size);
 
-  std::fprintf(out, "  depends:");
+  std::print(out, "  depends:");
   if (p.depends.empty()) {
-    std::fprintf(out, " <none>");
+    std::print(out, " <none>");
   } else {
     for (std::size_t i = 0; i < p.depends.size(); ++i) {
-      std::fprintf(out, " %s", p.depends[i].c_str());
+      std::print(out, " {}", p.depends[i]);
     }
   }
-  std::fprintf(out, "\n");
+  std::println(out);
 
-  std::fprintf(out, "  features:");
+  std::print(out, "  features:");
   if (p.features.empty()) {
-    std::fprintf(out, " <none>");
+    std::print(out, " <none>");
   } else {
     for (std::size_t i = 0; i < p.features.size(); ++i) {
-      std::fprintf(out, " %s", p.features[i].c_str());
+      std::print(out, " {}", p.features[i]);
     }
   }
-  std::fprintf(out, "\n");
+  std::println(out);
 }
 
 static void print_task(FILE *out, const Task &t) {
-  std::fprintf(out, "task %s\n", t.name.c_str());
-  std::fprintf(out, "  uses: %s\n", t.uses_package.c_str());
-  std::fprintf(out, "  cost: %d\n", t.cost);
+  std::println(out, "task {}", t.name);
+  std::println(out, "  uses: {}", t.uses_package);
+  std::println(out, "  cost: {}", t.cost);
 
-  std::fprintf(out, "  requires:");
+  std::print(out, "  requires:");
   if (t.requires_tasks.empty()) {
-    std::fprintf(out, " <none>");
+    std::print(out, " <none>");
   } else {
     for (std::size_t i = 0; i < t.requires_tasks.size(); ++i) {
-      std::fprintf(out, " %s", t.requires_tasks[i].c_str());
+      std::print(out, " {}", t.requires_tasks[i]);
     }
   }
-  std::fprintf(out, "\n");
+  std::println(out);
 }
 
 static void print_build_order(FILE *out, const Config &cfg,
                               const Buffer<int> &order) {
-  std::fprintf(out, "package build order:\n");
+  std::println(out, "package build order:");
   for (std::size_t i = 0; i < order.size(); ++i) {
-    std::fprintf(out, "  %lu. %s\n", i + 1,
-                 cfg.packages[order[i]].name.c_str());
+    std::println(out, "  {}. {}", i + 1, cfg.packages[order[i]].name);
   }
 }
 
 static void print_package_reports(FILE *out,
                                   const Buffer<PackageReport> &reports) {
-  std::fprintf(out, "package reports (by "
-                    "transitive size desc):\n");
+  std::println(out, "package reports (by transitive size desc):");
   for (std::size_t i = 0; i < reports.size(); ++i) {
     const PackageReport &r = reports[i];
-    std::fprintf(out,
-                 "  %-10s version=%d direct=%d "
-                 "transitive=%d deps=%d features=%d\n",
-                 r.name.c_str(), r.version, r.direct_size, r.transitive_size,
-                 r.dependency_count, r.feature_count);
+    std::println(
+        out, "  {:<10} version={} direct={} transitive={} deps={} features={}",
+        r.name, r.version, r.direct_size, r.transitive_size, r.dependency_count,
+        r.feature_count);
   }
 }
 
 static void print_task_reports(FILE *out, const Buffer<TaskReport> &reports) {
-  std::fprintf(out, "task reports (by cost desc):\n");
+  std::println(out, "task reports (by cost desc):");
   for (std::size_t i = 0; i < reports.size(); ++i) {
     const TaskReport &r = reports[i];
-    std::fprintf(out,
-                 "  %-10s uses=%-10s cost=%d "
-                 "prereqs=%d pkg-transitive=%d\n",
-                 r.name.c_str(), r.package_name.c_str(), r.cost,
-                 r.prerequisite_count, r.package_transitive_size);
+    std::println(out,
+                 "  {:<10} uses={:<10} cost={} prereqs={} pkg-transitive={}",
+                 r.name, r.package_name, r.cost, r.prerequisite_count,
+                 r.package_transitive_size);
   }
 }
 
 static void print_summary(FILE *out, const Config &cfg,
                           const Buffer<PackageReport> &package_reports) {
-  std::fprintf(out, "summary:\n");
-  std::fprintf(out, "  package count: %lu\n", cfg.packages.size());
-  std::fprintf(out, "  task count: %lu\n", cfg.tasks.size());
-  std::fprintf(out, "  total package direct size: %d\n",
+  std::println(out, "summary:");
+  std::println(out, "  package count: {}", cfg.packages.size());
+  std::println(out, "  task count: {}", cfg.tasks.size());
+  std::println(out, "  total package direct size: {}",
                total_package_direct_size(cfg));
-  std::fprintf(out, "  total task cost: %d\n", total_task_cost(cfg));
+  std::println(out, "  total task cost: {}", total_task_cost(cfg));
 
   int heavy = find_heaviest_package_index(package_reports);
   if (heavy >= 0) {
     const PackageReport &r = package_reports[heavy];
-    std::fprintf(out, "  heaviest package: %s (%d)\n", r.name.c_str(),
-                 r.transitive_size);
+    std::println(out, "  heaviest package: {} ({})", r.name, r.transitive_size);
   } else {
-    std::fprintf(out, "  heaviest package: <none>\n");
+    std::println(out, "  heaviest package: <none>");
   }
 }
 
 static void print_query(FILE *out, const Config &cfg, const char *name) {
   QueryResult q = query_entity_by_name(cfg, name);
   if (q.kind == QUERY_NONE) {
-    std::fprintf(out, "query '%s': not found\n", name);
+    std::println(out, "query '{}': not found", name);
     return;
   }
 
   if (q.kind == QUERY_PACKAGE) {
-    std::fprintf(out, "query '%s': found package\n", name);
+    std::println(out, "query '{}': found package", name);
     print_package(out, cfg.packages[q.index]);
     return;
   }
 
   if (q.kind == QUERY_TASK) {
-    std::fprintf(out, "query '%s': found task\n", name);
+    std::println(out, "query '{}': found task", name);
     print_task(out, cfg.tasks[q.index]);
     return;
   }
@@ -831,8 +827,7 @@ int run(const char *config, FILE *out) {
   auto const parse_result = parse_config(config);
   if (not parse_result.has_value()) {
     auto const err = parse_result.error();
-    std::fprintf(out, "parse error at line %d: %s\n", err.line,
-                 err.message.c_str());
+    std::println(out, "parse error at line {}: {}", err.line, err.message);
     return 1;
   }
 
@@ -841,19 +836,19 @@ int run(const char *config, FILE *out) {
   auto const validate_result = validate_config(cfg);
   if (not validate_result.has_value()) {
     auto const err = validate_result.error();
-    std::fprintf(out, "validation error: %s\n", err.message.c_str());
+    std::println(out, "validation error: {}", err.message);
     return 1;
   }
 
   auto const detect_cycles_result = detect_cycles(cfg);
   if (not detect_cycles_result.has_value()) {
     auto const err = detect_cycles_result.error();
-    std::fprintf(out, "cycle error: %s\n", err.message.c_str());
+    std::println(out, "cycle error: {}", err.message);
     return 1;
   }
 
   print_line(out);
-  std::fprintf(out, "raw config objects\n");
+  std::println(out, "raw config objects");
   print_line(out);
 
   for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
