@@ -20,6 +20,10 @@
     },
     "[jsonc][json]": {
       "editor.defaultFormatter": "vscode.json-language-features"
-    }
+    },
+    "clangd.arguments": [
+      "--compile-commands-dir=${workspaceFolder}/build/debug"
+    ],
+    "C_Cpp.intelliSenseEngine": "disabled"
   }
 }

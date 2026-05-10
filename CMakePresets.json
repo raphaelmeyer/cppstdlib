@@ -8,6 +8,10 @@
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      },
+      "environment": {
+        "CC": "clang",
+        "CXX": "clang++"
       }
     },
     {

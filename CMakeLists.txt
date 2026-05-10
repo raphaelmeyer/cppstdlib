@@ -2,12 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 project(cppstdlib LANGUAGES CXX)
 
 add_library(settings INTERFACE)
-set_target_properties(settings PROPERTIES
-    CXX_STANDARD 23
-    CXX_STANDARD_REQUIRED ON
-    CXX_EXTENSIONS OFF
-)
-target_compile_options(settings INTERFACE -Wall -Wextra -Werror)
+target_compile_options(settings INTERFACE -Wall -Wextra -Werror -std=c++23)
 
 add_library(lib)
 target_sources(lib PRIVATE lib.cc)

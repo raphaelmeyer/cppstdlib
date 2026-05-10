@@ -173,10 +173,6 @@ static bool name_eq(const Name &a, const Name &b) {
   return cstr_eq(a.text, b.text);
 }
 
-struct StringList {
-  Buffer<Name> items;
-};
-
 struct Package {
   Name name;
   int version;
@@ -194,14 +190,6 @@ struct Task {
   Buffer<Name> requires_tasks;
   bool has_uses;
   bool has_cost;
-};
-
-enum EntityKind { ENTITY_PACKAGE, ENTITY_TASK };
-
-struct Entity {
-  EntityKind kind;
-  Package package_value;
-  Task task_value;
 };
 
 struct Config {
@@ -540,13 +528,6 @@ static Result validate_config(const Config &cfg, Error *out_error) {
 
   return Result::OK;
 }
-
-struct IntStack {
-  Buffer<int> items;
-  void push(int v) { items.add(v); }
-  bool empty() const { return items.size == 0; }
-  int pop() { return items[--items.size]; }
-};
 
 static Result detect_package_cycle_dfs(const Config &cfg, int index,
                                        Buffer<int> &color, Error *out_error) {
