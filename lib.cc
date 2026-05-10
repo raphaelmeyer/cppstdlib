@@ -1,6 +1,5 @@
 #include "lib.h"
 
-#include <cstdio>
 #include <expected>
 #include <print>
 #include <ranges>
@@ -82,28 +81,21 @@ bool is_comment_or_empty(std::string_view line) {
   return line.empty() || line.at(0) == '#';
 }
 
-} // namespace
-
-static bool parse_int(const char *s, int &out) {
-  int i = 0;
-  bool neg = false;
-  if (s[i] == '-') {
-    neg = true;
-    ++i;
+std::optional<int> parse_int(std::string_view text) {
+  const auto first = text.data();
+  const auto last = first + text.size();
+  int value = 0;
+  auto [end, error] = std::from_chars(first, last, value, 10);
+  if (error != std::errc()) {
+    return std::nullopt;
   }
-  if (s[i] == '\0')
-    return false;
-  int v = 0;
-  while (s[i] != '\0') {
-    char c = s[i];
-    if (c < '0' || c > '9')
-      return false;
-    v = v * 10 + (c - '0');
-    ++i;
+  if (end != last) {
+    return std::nullopt;
   }
-  out = neg ? -v : v;
-  return true;
+  return value;
 }
+
+} // namespace
 
 template <typename T> using Buffer = std::vector<T>;
 
@@ -231,12 +223,12 @@ static Result<Config> parse_config(std::string_view config_text) {
           return std::unexpected{
               ParsingError{line.number, "version requires one integer"}};
         }
-        int v = 0;
-        if (!parse_int(std::string{words[1]}.c_str(), v)) {
+        auto const version = parse_int(words[1]);
+        if (not version.has_value()) {
           return std::unexpected{
               ParsingError{line.number, "invalid version integer"}};
         }
-        p.version = v;
+        p.version = version.value();
         p.has_version = true;
         continue;
       }
@@ -246,12 +238,12 @@ static Result<Config> parse_config(std::string_view config_text) {
           return std::unexpected{
               ParsingError{line.number, "size requires one integer"}};
         }
-        int v = 0;
-        if (!parse_int(std::string{words[1]}.c_str(), v)) {
+        auto const size = parse_int(words[1]);
+        if (not size.has_value()) {
           return std::unexpected{
               ParsingError{line.number, "invalid size integer"}};
         }
-        p.size = v;
+        p.size = size.value();
         p.has_size = true;
         continue;
       }
@@ -298,12 +290,12 @@ static Result<Config> parse_config(std::string_view config_text) {
           return std::unexpected{
               ParsingError{line.number, "cost requires one integer"}};
         }
-        int v = 0;
-        if (!parse_int(std::string{words[1]}.c_str(), v)) {
+        auto const cost = parse_int(words[1]);
+        if (not cost.has_value()) {
           return std::unexpected{
               ParsingError{line.number, "invalid cost integer"}};
         }
-        t.cost = v;
+        t.cost = cost.value();
         t.has_cost = true;
         continue;
       }
