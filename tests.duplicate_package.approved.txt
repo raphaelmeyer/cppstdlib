@@ -1,0 +1,2 @@
+parse error at line 5: duplicate package
+

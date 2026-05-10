@@ -1,0 +1,2 @@
+parse error at line 7: cost requires one integer
+
