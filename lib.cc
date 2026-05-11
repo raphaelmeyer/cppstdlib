@@ -11,6 +11,10 @@
 
 namespace {
 
+template <class... Ts> struct overloaded : Ts... {
+  using Ts::operator()...;
+};
+
 struct ParsingError {
   size_t line;
   std::string message;
@@ -145,16 +149,21 @@ std::optional<std::size_t> find_task_index(const Config &cfg,
   return std::distance(cfg.tasks.begin(), task);
 }
 
+using ParseState = std::variant<std::monostate, Package, Task>;
+
+void commit_previous_parse_state(Config &config, ParseState &state) {
+  std::visit(
+      overloaded{[&](Package &package) { config.packages.push_back(package); },
+                 [&](Task &task) { config.tasks.push_back(task); },
+                 [](auto) {}},
+      state);
+}
+
 Result<Config> parse_config(std::string_view config_text) {
   auto const lines = split_lines(config_text);
 
   Config config{};
-
-  enum ParseState { STATE_NONE, STATE_PACKAGE, STATE_TASK };
-
-  ParseState state = STATE_NONE;
-  auto current_package = config.packages.end();
-  auto current_task = config.tasks.end();
+  ParseState state{};
 
   for (auto const &line : lines) {
     if (is_comment_or_empty(line.text)) {
@@ -167,6 +176,8 @@ Result<Config> parse_config(std::string_view config_text) {
     }
 
     if (words.at(0) == "package") {
+      commit_previous_parse_state(config, state);
+
       if (words.size() != 2) {
         return std::unexpected{
             ParsingError{line.number, "package requires exactly one name"}};
@@ -174,14 +185,14 @@ Result<Config> parse_config(std::string_view config_text) {
       if (find_package_index(config, words.at(1)).has_value()) {
         return std::unexpected{ParsingError{line.number, "duplicate package"}};
       }
-      config.packages.push_back(Package{.name{words[1]}});
-      current_package = std::prev(config.packages.end());
-      current_task = config.tasks.end();
-      state = STATE_PACKAGE;
+
+      state = Package{.name{words.at(1)}};
       continue;
     }
 
     if (words[0] == "task") {
+      commit_previous_parse_state(config, state);
+
       if (words.size() != 2) {
         return std::unexpected{
             ParsingError{line.number, "task requires exactly one name"}};
@@ -190,16 +201,11 @@ Result<Config> parse_config(std::string_view config_text) {
         return std::unexpected{ParsingError{line.number, "duplicate task"}};
       };
 
-      config.tasks.push_back(Task{.name{words[1]}});
-      current_task = std::prev(config.tasks.end());
-      current_package = config.packages.end();
-      state = STATE_TASK;
+      state = Task{.name{words.at(1)}};
       continue;
     }
 
-    if (state == STATE_PACKAGE) {
-      Package &p = *current_package;
-
+    if (auto p = std::get_if<Package>(&state); p != nullptr) {
       if (words[0] == "version") {
         if (words.size() != 2) {
           return std::unexpected{
@@ -210,7 +216,7 @@ Result<Config> parse_config(std::string_view config_text) {
           return std::unexpected{
               ParsingError{line.number, "invalid version integer"}};
         }
-        p.version = version.value();
+        p->version = version.value();
         continue;
       }
 
@@ -224,7 +230,7 @@ Result<Config> parse_config(std::string_view config_text) {
           return std::unexpected{
               ParsingError{line.number, "invalid size integer"}};
         }
-        p.size = size.value();
+        p->size = size.value();
         continue;
       }
 
@@ -234,7 +240,7 @@ Result<Config> parse_config(std::string_view config_text) {
               line.number, "depends requires at least one package name"}};
         }
         for (std::size_t i = 1; i < words.size(); ++i) {
-          p.depends.emplace_back(words[i]);
+          p->depends.emplace_back(words[i]);
         }
         continue;
       }
@@ -244,7 +250,7 @@ Result<Config> parse_config(std::string_view config_text) {
           return std::unexpected{
               ParsingError{line.number, "feature requires one name"}};
         }
-        p.features.emplace_back(words[1]);
+        p->features.emplace_back(words[1]);
         continue;
       }
 
@@ -252,15 +258,13 @@ Result<Config> parse_config(std::string_view config_text) {
           ParsingError{line.number, "unknown package directive"}};
     }
 
-    if (state == STATE_TASK) {
-      Task &t = *current_task;
-
+    if (auto t = std::get_if<Task>(&state); t != nullptr) {
       if (words[0] == "uses") {
         if (words.size() != 2) {
           return std::unexpected{
               ParsingError{line.number, "uses requires one package name"}};
         }
-        t.uses_package = words[1];
+        t->uses_package = words[1];
         continue;
       }
 
@@ -274,7 +278,7 @@ Result<Config> parse_config(std::string_view config_text) {
           return std::unexpected{
               ParsingError{line.number, "invalid cost integer"}};
         }
-        t.cost = cost.value();
+        t->cost = cost.value();
         continue;
       }
 
@@ -284,7 +288,7 @@ Result<Config> parse_config(std::string_view config_text) {
               line.number, "requires needs at least one task name"}};
         }
         for (std::size_t i = 1; i < words.size(); ++i) {
-          t.requires_tasks.emplace_back(words[i]);
+          t->requires_tasks.emplace_back(words[i]);
         }
         continue;
       }
@@ -297,6 +301,7 @@ Result<Config> parse_config(std::string_view config_text) {
         line.number, "directive outside of package or task block"}};
   }
 
+  commit_previous_parse_state(config, state);
   return config;
 }
 
