@@ -190,14 +190,14 @@ Result<Config> parse_config(std::string_view config_text) {
       continue;
     }
 
-    if (words[0] == "task") {
+    if (words.at(0) == "task") {
       commit_previous_parse_state(config, state);
 
       if (words.size() != 2) {
         return std::unexpected{
             ParsingError{line.number, "task requires exactly one name"}};
       }
-      if (find_task_index(config, words[1]).has_value()) {
+      if (find_task_index(config, words.at(1)).has_value()) {
         return std::unexpected{ParsingError{line.number, "duplicate task"}};
       };
 
@@ -206,12 +206,12 @@ Result<Config> parse_config(std::string_view config_text) {
     }
 
     if (auto p = std::get_if<Package>(&state); p != nullptr) {
-      if (words[0] == "version") {
+      if (words.at(0) == "version") {
         if (words.size() != 2) {
           return std::unexpected{
               ParsingError{line.number, "version requires one integer"}};
         }
-        auto const version = parse_int(words[1]);
+        auto const version = parse_int(words.at(1));
         if (not version.has_value()) {
           return std::unexpected{
               ParsingError{line.number, "invalid version integer"}};
@@ -220,12 +220,12 @@ Result<Config> parse_config(std::string_view config_text) {
         continue;
       }
 
-      if (words[0] == "size") {
+      if (words.at(0) == "size") {
         if (words.size() != 2) {
           return std::unexpected{
               ParsingError{line.number, "size requires one integer"}};
         }
-        auto const size = parse_int(words[1]);
+        auto const size = parse_int(words.at(1));
         if (not size.has_value()) {
           return std::unexpected{
               ParsingError{line.number, "invalid size integer"}};
@@ -234,23 +234,22 @@ Result<Config> parse_config(std::string_view config_text) {
         continue;
       }
 
-      if (words[0] == "depends") {
+      if (words.at(0) == "depends") {
         if (words.size() < 2) {
           return std::unexpected{ParsingError{
               line.number, "depends requires at least one package name"}};
         }
-        for (std::size_t i = 1; i < words.size(); ++i) {
-          p->depends.emplace_back(words[i]);
-        }
+        p->depends.insert(p->depends.end(), std::next(words.begin()),
+                          words.end());
         continue;
       }
 
-      if (words[0] == "feature") {
+      if (words.at(0) == "feature") {
         if (words.size() != 2) {
           return std::unexpected{
               ParsingError{line.number, "feature requires one name"}};
         }
-        p->features.emplace_back(words[1]);
+        p->features.emplace_back(words.at(1));
         continue;
       }
 
@@ -259,21 +258,21 @@ Result<Config> parse_config(std::string_view config_text) {
     }
 
     if (auto t = std::get_if<Task>(&state); t != nullptr) {
-      if (words[0] == "uses") {
+      if (words.at(0) == "uses") {
         if (words.size() != 2) {
           return std::unexpected{
               ParsingError{line.number, "uses requires one package name"}};
         }
-        t->uses_package = words[1];
+        t->uses_package = words.at(1);
         continue;
       }
 
-      if (words[0] == "cost") {
+      if (words.at(0) == "cost") {
         if (words.size() != 2) {
           return std::unexpected{
               ParsingError{line.number, "cost requires one integer"}};
         }
-        auto const cost = parse_int(words[1]);
+        auto const cost = parse_int(words.at(1));
         if (not cost.has_value()) {
           return std::unexpected{
               ParsingError{line.number, "invalid cost integer"}};
@@ -282,14 +281,13 @@ Result<Config> parse_config(std::string_view config_text) {
         continue;
       }
 
-      if (words[0] == "requires") {
+      if (words.at(0) == "requires") {
         if (words.size() < 2) {
           return std::unexpected{ParsingError{
               line.number, "requires needs at least one task name"}};
         }
-        for (std::size_t i = 1; i < words.size(); ++i) {
-          t->requires_tasks.emplace_back(words[i]);
-        }
+        t->requires_tasks.insert(t->requires_tasks.end(),
+                                 std::next(words.begin()), words.end());
         continue;
       }
 
