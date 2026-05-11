@@ -99,50 +99,31 @@ std::optional<int> parse_int(std::string_view text) {
 template <typename T> using Buffer = std::vector<T>;
 
 using Name = std::string;
+using Dependencies = std::vector<Name>;
+using Features = std::vector<Name>;
 
 struct Package {
-  Name name;
-  int version;
-  int size;
-  Buffer<Name> depends;
-  Buffer<Name> features;
-  bool has_version;
-  bool has_size;
+  Name name{};
+  std::optional<int> version{};
+  std::optional<int> size{};
+  Dependencies depends{};
+  Features features{};
 };
 
 struct Task {
-  Name name;
-  Name uses_package;
-  int cost;
-  Buffer<Name> requires_tasks;
-  bool has_uses;
-  bool has_cost;
+  Name name{};
+  Name uses_package{};
+  std::optional<int> cost{};
+  std::vector<Name> requires_tasks{};
 };
+
+using Packages = std::vector<Package>;
+using Tasks = std::vector<Task>;
 
 struct Config {
-  Buffer<Package> packages;
-  Buffer<Task> tasks;
+  Packages packages{};
+  Tasks tasks{};
 };
-
-Package make_empty_package(std::string_view name) {
-  Package p;
-  p.name = name;
-  p.version = 0;
-  p.size = 0;
-  p.has_version = false;
-  p.has_size = false;
-  return p;
-}
-
-Task make_empty_task(std::string_view name) {
-  Task t;
-  t.name = name;
-  t.uses_package = "";
-  t.cost = 0;
-  t.has_uses = false;
-  t.has_cost = false;
-  return t;
-}
 
 std::optional<std::size_t> find_package_index(const Config &cfg,
                                               std::string_view name) {
@@ -172,8 +153,8 @@ Result<Config> parse_config(std::string_view config_text) {
   enum ParseState { STATE_NONE, STATE_PACKAGE, STATE_TASK };
 
   ParseState state = STATE_NONE;
-  int current_package = -1;
-  int current_task = -1;
+  auto current_package = config.packages.end();
+  auto current_task = config.tasks.end();
 
   for (auto const &line : lines) {
     if (is_comment_or_empty(line.text)) {
@@ -193,9 +174,9 @@ Result<Config> parse_config(std::string_view config_text) {
       if (find_package_index(config, words.at(1)).has_value()) {
         return std::unexpected{ParsingError{line.number, "duplicate package"}};
       }
-      config.packages.push_back(make_empty_package(words[1]));
-      current_package = config.packages.size() - 1;
-      current_task = -1;
+      config.packages.push_back(Package{.name{words[1]}});
+      current_package = std::prev(config.packages.end());
+      current_task = config.tasks.end();
       state = STATE_PACKAGE;
       continue;
     }
@@ -207,17 +188,17 @@ Result<Config> parse_config(std::string_view config_text) {
       }
       if (find_task_index(config, words[1]).has_value()) {
         return std::unexpected{ParsingError{line.number, "duplicate task"}};
-      }
-      Task t = make_empty_task(words[1]);
-      config.tasks.push_back(t);
-      current_task = config.tasks.size() - 1;
-      current_package = -1;
+      };
+
+      config.tasks.push_back(Task{.name{words[1]}});
+      current_task = std::prev(config.tasks.end());
+      current_package = config.packages.end();
       state = STATE_TASK;
       continue;
     }
 
     if (state == STATE_PACKAGE) {
-      Package &p = config.packages[current_package];
+      Package &p = *current_package;
 
       if (words[0] == "version") {
         if (words.size() != 2) {
@@ -230,7 +211,6 @@ Result<Config> parse_config(std::string_view config_text) {
               ParsingError{line.number, "invalid version integer"}};
         }
         p.version = version.value();
-        p.has_version = true;
         continue;
       }
 
@@ -245,7 +225,6 @@ Result<Config> parse_config(std::string_view config_text) {
               ParsingError{line.number, "invalid size integer"}};
         }
         p.size = size.value();
-        p.has_size = true;
         continue;
       }
 
@@ -274,7 +253,7 @@ Result<Config> parse_config(std::string_view config_text) {
     }
 
     if (state == STATE_TASK) {
-      Task &t = config.tasks[current_task];
+      Task &t = *current_task;
 
       if (words[0] == "uses") {
         if (words.size() != 2) {
@@ -282,7 +261,6 @@ Result<Config> parse_config(std::string_view config_text) {
               ParsingError{line.number, "uses requires one package name"}};
         }
         t.uses_package = words[1];
-        t.has_uses = true;
         continue;
       }
 
@@ -297,7 +275,6 @@ Result<Config> parse_config(std::string_view config_text) {
               ParsingError{line.number, "invalid cost integer"}};
         }
         t.cost = cost.value();
-        t.has_cost = true;
         continue;
       }
 
@@ -326,10 +303,10 @@ Result<Config> parse_config(std::string_view config_text) {
 Result<void> validate_config(const Config &cfg) {
   for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
     const Package &p = cfg.packages[i];
-    if (!p.has_version) {
+    if (not p.version.has_value()) {
       return std::unexpected{ValidationError{"package missing version"}};
     }
-    if (!p.has_size) {
+    if (not p.size.has_value()) {
       return std::unexpected{ValidationError{"package missing size"}};
     }
 
@@ -343,10 +320,10 @@ Result<void> validate_config(const Config &cfg) {
 
   for (std::size_t i = 0; i < cfg.tasks.size(); ++i) {
     const Task &t = cfg.tasks[i];
-    if (!t.has_uses) {
+    if (t.uses_package.empty()) {
       return std::unexpected{ValidationError{"task missing uses"}};
     }
-    if (!t.has_cost) {
+    if (not t.cost.has_value()) {
       return std::unexpected{ValidationError{"task missing cost"}};
     }
     if (not find_package_index(cfg, t.uses_package).has_value()) {
@@ -481,7 +458,7 @@ int compute_transitive_size_dfs(const Config &cfg, int index, Buffer<int> &memo,
     return 0;
 
   busy[index] = 1;
-  int total = cfg.packages[index].size;
+  auto total = cfg.packages[index].size.value();
   for (std::size_t i = 0; i < cfg.packages[index].depends.size(); ++i) {
     auto const dependency =
         find_package_index(cfg, cfg.packages[index].depends[i]);
@@ -518,8 +495,8 @@ Buffer<PackageReport> make_package_reports(const Config &cfg) {
   for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
     PackageReport r;
     r.name = cfg.packages[i].name;
-    r.version = cfg.packages[i].version;
-    r.direct_size = cfg.packages[i].size;
+    r.version = cfg.packages[i].version.value();
+    r.direct_size = cfg.packages[i].size.value();
     r.transitive_size = compute_transitive_size_dfs(cfg, i, memo, busy);
     r.dependency_count = cfg.packages[i].depends.size();
     r.feature_count = cfg.packages[i].features.size();
@@ -557,7 +534,7 @@ Buffer<TaskReport> make_task_reports(const Config &cfg) {
     TaskReport r;
     r.name = cfg.tasks[i].name;
     r.package_name = cfg.tasks[i].uses_package;
-    r.cost = cfg.tasks[i].cost;
+    r.cost = cfg.tasks[i].cost.value();
     r.prerequisite_count = cfg.tasks[i].requires_tasks.size();
     auto const package = find_package_index(cfg, cfg.tasks[i].uses_package);
     r.package_transitive_size =
@@ -595,7 +572,7 @@ void sort_task_reports_by_cost(Buffer<TaskReport> &reports) {
 int total_package_direct_size(const Config &cfg) {
   std::size_t total = 0;
   for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
-    total += cfg.packages[i].size;
+    total += cfg.packages[i].size.value();
   }
   return total;
 }
@@ -603,7 +580,7 @@ int total_package_direct_size(const Config &cfg) {
 int total_task_cost(const Config &cfg) {
   int total = 0;
   for (std::size_t i = 0; i < cfg.tasks.size(); ++i) {
-    total += cfg.tasks[i].cost;
+    total += cfg.tasks[i].cost.value();
   }
   return total;
 }
@@ -658,8 +635,8 @@ void print_line(FILE *out) {
 
 void print_package(FILE *out, const Package &p) {
   std::println(out, "package {}", p.name);
-  std::println(out, "  version: {}", p.version);
-  std::println(out, "  size: {}", p.size);
+  std::println(out, "  version: {}", p.version.value());
+  std::println(out, "  size: {}", p.size.value());
 
   std::print(out, "  depends:");
   if (p.depends.empty()) {
@@ -685,7 +662,7 @@ void print_package(FILE *out, const Package &p) {
 void print_task(FILE *out, const Task &t) {
   std::println(out, "task {}", t.name);
   std::println(out, "  uses: {}", t.uses_package);
-  std::println(out, "  cost: {}", t.cost);
+  std::println(out, "  cost: {}", t.cost.value());
 
   std::print(out, "  requires:");
   if (t.requires_tasks.empty()) {
