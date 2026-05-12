@@ -1,5 +1,6 @@
 #include "lib.h"
 
+#include <algorithm>
 #include <expected>
 #include <optional>
 #include <print>
@@ -304,8 +305,7 @@ Result<Config> parse_config(std::string_view config_text) {
 }
 
 Result<void> validate_config(const Config &cfg) {
-  for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
-    const Package &p = cfg.packages[i];
+  for (auto const &p : cfg.packages) {
     if (not p.version.has_value()) {
       return std::unexpected{ValidationError{"package missing version"}};
     }
@@ -313,16 +313,15 @@ Result<void> validate_config(const Config &cfg) {
       return std::unexpected{ValidationError{"package missing size"}};
     }
 
-    for (std::size_t d = 0; d < p.depends.size(); ++d) {
-      if (not find_package_index(cfg, p.depends[d]).has_value()) {
-        return std::unexpected{
-            ValidationError{"package dependency refers to unknown package"}};
-      }
-    }
+    if (not std::ranges::all_of(p.depends, [&cfg](auto const &dependency) {
+          return find_package_index(cfg, dependency).has_value();
+        })) {
+      return std::unexpected{
+          ValidationError{"package dependency refers to unknown package"}};
+    };
   }
 
-  for (std::size_t i = 0; i < cfg.tasks.size(); ++i) {
-    const Task &t = cfg.tasks[i];
+  for (auto const &t : cfg.tasks) {
     if (t.uses_package.empty()) {
       return std::unexpected{ValidationError{"task missing uses"}};
     }
@@ -332,10 +331,11 @@ Result<void> validate_config(const Config &cfg) {
     if (not find_package_index(cfg, t.uses_package).has_value()) {
       return std::unexpected{ValidationError{"task uses unknown package"}};
     }
-    for (std::size_t r = 0; r < t.requires_tasks.size(); ++r) {
-      if (not find_task_index(cfg, t.requires_tasks[r]).has_value()) {
-        return std::unexpected{ValidationError{"task requires unknown task"}};
-      }
+
+    if (std::ranges::any_of(t.requires_tasks, [&cfg](auto const &required) {
+          return not find_task_index(cfg, required).has_value();
+        })) {
+      return std::unexpected{ValidationError{"task requires unknown task"}};
     }
   }
 
