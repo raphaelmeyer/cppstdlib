@@ -628,9 +628,9 @@ void print_package(FILE *out, const Package &p) {
   if (p.depends.empty()) {
     std::print(out, " <none>");
   } else {
-    for (std::size_t i = 0; i < p.depends.size(); ++i) {
-      std::print(out, " {}", p.depends[i]);
-    }
+    std::ranges::for_each(p.depends, [&out](auto const &depend) {
+      std::print(out, " {}", depend);
+    });
   }
   std::println(out);
 
@@ -638,9 +638,9 @@ void print_package(FILE *out, const Package &p) {
   if (p.features.empty()) {
     std::print(out, " <none>");
   } else {
-    for (std::size_t i = 0; i < p.features.size(); ++i) {
-      std::print(out, " {}", p.features[i]);
-    }
+    std::ranges::for_each(p.features, [&out](auto const &feature) {
+      std::print(out, " {}", feature);
+    });
   }
   std::println(out);
 }
@@ -654,9 +654,9 @@ void print_task(FILE *out, const Task &t) {
   if (t.requires_tasks.empty()) {
     std::print(out, " <none>");
   } else {
-    for (std::size_t i = 0; i < t.requires_tasks.size(); ++i) {
-      std::print(out, " {}", t.requires_tasks[i]);
-    }
+    std::ranges::for_each(t.requires_tasks, [&out](auto const &requires_task) {
+      std::print(out, " {}", requires_task);
+    });
   }
   std::println(out);
 }
