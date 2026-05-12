@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <expected>
+#include <functional>
 #include <optional>
 #include <print>
 #include <ranges>
@@ -130,24 +131,24 @@ struct Config {
   Tasks tasks{};
 };
 
-std::optional<std::size_t> find_package_index(const Config &cfg,
-                                              std::string_view name) {
-  auto const package = std::ranges::find(cfg.packages, name, &Package::name);
-  if (package == cfg.packages.end()) {
+std::optional<std::size_t> find_index(auto const &collection,
+                                      std::string_view name, auto get_name) {
+  auto const item = std::ranges::find(collection, name, get_name);
+  if (item == collection.end()) {
     return std::nullopt;
   }
 
-  return std::distance(cfg.packages.begin(), package);
+  return std::distance(collection.begin(), item);
+}
+
+std::optional<std::size_t> find_package_index(const Config &cfg,
+                                              std::string_view name) {
+  return find_index(cfg.packages, name, &Package::name);
 }
 
 std::optional<std::size_t> find_task_index(const Config &cfg,
                                            std::string_view name) {
-  auto const task = std::ranges::find(cfg.tasks, name, &Task::name);
-  if (task == cfg.tasks.end()) {
-    return std::nullopt;
-  }
-
-  return std::distance(cfg.tasks.begin(), task);
+  return find_index(cfg.tasks, name, &Task::name);
 }
 
 using ParseState = std::variant<std::monostate, Package, Task>;
@@ -342,84 +343,66 @@ Result<void> validate_config(const Config &cfg) {
   return {};
 }
 
-Result<void> detect_package_cycle_dfs(const Config &cfg, int index,
-                                      Buffer<int> &color) {
-  color.at(index) = 1;
-  const Package &p = cfg.packages[index];
+enum class Color { White, Gray, Black };
+using Tricolor = std::vector<Color>;
 
-  for (std::size_t i = 0; i < p.depends.size(); ++i) {
-    const auto dependency = find_package_index(cfg, p.depends[i]);
-    if (not dependency.has_value()) {
-      continue;
-    }
+bool detect_cycle(Tricolor &coloring, std::size_t current,
+                  auto const &collection, auto get_dependencies,
+                  auto get_field) {
+  coloring.at(current) = Color::Gray;
 
-    if (color.at(dependency.value()) == 1) {
-      return std::unexpected{CycleDetectionError{"package cycle detected"}};
-    }
-    if (color.at(dependency.value()) == 0) {
-      Result r = detect_package_cycle_dfs(cfg, dependency.value(), color);
-      if (not r.has_value()) {
-        return r;
+  auto const &dependencies =
+      std::invoke(get_dependencies, collection.at(current));
+
+  for (auto &&[index, depends] : dependencies | std::views::enumerate) {
+    auto const dependency = find_index(collection, depends, get_field);
+    if (dependency.has_value()) {
+      auto const dependency_index = dependency.value();
+      switch (coloring.at(dependency_index)) {
+      case Color::White: {
+        if (detect_cycle(coloring, dependency_index, collection,
+                         get_dependencies, get_field)) {
+          return true;
+        }
+      } break;
+
+      case Color::Gray:
+        return true;
+
+      default:
+        break;
       }
     }
   }
 
-  color.at(index) = 2;
-  return {};
+  coloring.at(current) = Color::Black;
+  return false;
 }
 
-Result<void> detect_task_cycle_dfs(const Config &cfg, int index,
-                                   Buffer<int> &color) {
-  color.at(index) = 1;
-  const Task &t = cfg.tasks[index];
+bool detect_cycles(auto const &collection, auto get_dependencies,
+                   auto get_field) {
+  Tricolor coloring{};
+  coloring.resize(collection.size());
+  std::ranges::fill(coloring, Color::White);
 
-  for (std::size_t i = 0; i < t.requires_tasks.size(); ++i) {
-    auto const dependency = find_task_index(cfg, t.requires_tasks[i]);
-    if (not dependency.has_value()) {
-      continue;
-    }
-    if (color.at(dependency.value()) == 1) {
-      return std::unexpected{CycleDetectionError{"task cycle detected"}};
-    }
-    if (color.at(dependency.value()) == 0) {
-      Result r = detect_task_cycle_dfs(cfg, dependency.value(), color);
-      if (not r.has_value()) {
-        return r;
+  for (auto &&[index, item] : collection | std::views::enumerate) {
+    if (coloring.at(index) == Color::White) {
+      if (detect_cycle(coloring, index, collection, get_dependencies,
+                       get_field)) {
+        return true;
       }
     }
   }
-
-  color.at(index) = 2;
-  return {};
+  return false;
 }
 
 Result<void> detect_cycles(const Config &cfg) {
-  Buffer<int> pcolor;
-  pcolor.reserve(cfg.packages.size());
-  for (std::size_t i = 0; i < cfg.packages.size(); ++i)
-    pcolor.push_back(0);
-
-  for (std::size_t i = 0; i < cfg.packages.size(); ++i) {
-    if (pcolor[i] == 0) {
-      Result r = detect_package_cycle_dfs(cfg, i, pcolor);
-      if (not r.has_value()) {
-        return r;
-      }
-    }
+  if (detect_cycles(cfg.packages, &Package::depends, &Package::name)) {
+    return std::unexpected{CycleDetectionError{"package cycle detected"}};
   }
 
-  Buffer<int> tcolor;
-  tcolor.reserve(cfg.tasks.size());
-  for (std::size_t i = 0; i < cfg.tasks.size(); ++i)
-    tcolor.push_back(0);
-
-  for (std::size_t i = 0; i < cfg.tasks.size(); ++i) {
-    if (tcolor[i] == 0) {
-      Result r = detect_task_cycle_dfs(cfg, i, tcolor);
-      if (not r.has_value()) {
-        return r;
-      }
-    }
+  if (detect_cycles(cfg.tasks, &Task::requires_tasks, &Task::name)) {
+    return std::unexpected{CycleDetectionError{"task cycle detected"}};
   }
 
   return {};
